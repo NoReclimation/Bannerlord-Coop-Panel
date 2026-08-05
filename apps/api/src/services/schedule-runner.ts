@@ -253,6 +253,12 @@ export class ScheduleRunner {
 
     const response = await this.gateway.request(server.hostId, action, {
       serverId: server.id,
+      ...(action === 'server.start' || action === 'server.restart'
+        ? {
+            gamePort: server.gamePort,
+            enginePort: server.enginePort,
+          }
+        : {}),
     });
 
     if (!response.ok) {

@@ -1,9 +1,10 @@
 import type Dockerode from 'dockerode';
-import type {
-  ServerConfigBundle,
-  ServerCreatePayload,
-  ServerCreateResult,
-  ServerPutConfigPayload,
+import {
+  COOP_CONTAINER_LISTEN,
+  type ServerConfigBundle,
+  type ServerCreatePayload,
+  type ServerCreateResult,
+  type ServerPutConfigPayload,
 } from '@bannerlord-panel/shared';
 import type { AgentConfig } from '../config.js';
 import { containerNameFor } from './client.js';
@@ -19,6 +20,97 @@ function installationBindIsReadOnly(
   return (info.HostConfig.Binds ?? []).some((bind) =>
     bind.includes(':/opt/bannerlord:ro'),
   );
+}
+
+function hostPortForBinding(
+  bindings: Dockerode.ContainerInspectInfo['HostConfig']['PortBindings'],
+  containerPort: string,
+): string | undefined {
+  const entries = bindings?.[containerPort];
+  return entries?.[0]?.HostPort;
+}
+
+/**
+ * Coop listens on fixed ports inside the container; Docker must publish
+ * host gamePort → 4200/udp and host enginePort → 7210/udp.
+ */
+function portPublishNeedsHeal(
+  info: Dockerode.ContainerInspectInfo,
+  gamePort: number,
+  enginePort: number,
+): boolean {
+  const bindings = info.HostConfig.PortBindings ?? {};
+  const gameKey = `${COOP_CONTAINER_LISTEN.gamePort}/udp`;
+  const engineKey = `${COOP_CONTAINER_LISTEN.enginePort}/udp`;
+  return (
+    hostPortForBinding(bindings, gameKey) !== String(gamePort) ||
+    hostPortForBinding(bindings, engineKey) !== String(enginePort)
+  );
+}
+
+function coopPortBindings(
+  gamePort: number,
+  enginePort: number,
+): NonNullable<Dockerode.ContainerCreateOptions['HostConfig']>['PortBindings'] {
+  return {
+    [`${COOP_CONTAINER_LISTEN.gamePort}/udp`]: [
+      { HostPort: String(gamePort) },
+    ],
+    [`${COOP_CONTAINER_LISTEN.enginePort}/udp`]: [
+      { HostPort: String(enginePort) },
+    ],
+  };
+}
+
+function coopExposedPorts(): Record<string, object> {
+  return {
+    [`${COOP_CONTAINER_LISTEN.gamePort}/udp`]: {},
+    [`${COOP_CONTAINER_LISTEN.enginePort}/udp`]: {},
+  };
+}
+
+function portsFromContainer(
+  info: Dockerode.ContainerInspectInfo,
+): { gamePort: number; enginePort: number } | undefined {
+  const labels = info.Config.Labels ?? {};
+  const fromLabelsGame = Number(labels['bannerlord.game_port']);
+  const fromLabelsEngine = Number(labels['bannerlord.engine_port']);
+  if (
+    Number.isFinite(fromLabelsGame) &&
+    fromLabelsGame > 0 &&
+    Number.isFinite(fromLabelsEngine) &&
+    fromLabelsEngine > 0
+  ) {
+    return { gamePort: fromLabelsGame, enginePort: fromLabelsEngine };
+  }
+
+  // Legacy: PortBindings used `${hostPort}/udp` → HostPort hostPort.
+  const bindings = info.HostConfig.PortBindings ?? {};
+  let gamePort: number | undefined;
+  let enginePort: number | undefined;
+  for (const [key, val] of Object.entries(bindings)) {
+    if (!key.endsWith('/udp')) continue;
+    const containerPort = Number(key.split('/')[0]);
+    const mapped = Array.isArray(val) ? val[0] : undefined;
+    const hostPort = Number(mapped?.HostPort);
+    if (!Number.isFinite(containerPort) || !Number.isFinite(hostPort)) continue;
+    if (containerPort === COOP_CONTAINER_LISTEN.gamePort || containerPort === hostPort) {
+      if (
+        containerPort < COOP_CONTAINER_LISTEN.enginePort &&
+        hostPort < COOP_CONTAINER_LISTEN.enginePort
+      ) {
+        gamePort = hostPort;
+      }
+    }
+    if (
+      containerPort === COOP_CONTAINER_LISTEN.enginePort ||
+      containerPort >= COOP_CONTAINER_LISTEN.enginePort
+    ) {
+      enginePort = hostPort;
+    }
+  }
+  if (gamePort && enginePort) return { gamePort, enginePort };
+  return undefined;
 }
 
 export class DockerServerManager {
@@ -48,6 +140,8 @@ export class DockerServerManager {
         'bannerlord.panel': '1',
         'bannerlord.server_id': payload.serverId,
         'bannerlord.name': payload.name,
+        'bannerlord.game_port': String(payload.gamePort),
+        'bannerlord.engine_port': String(payload.enginePort),
       },
       Env: [
         'WINEPREFIX=/wineprefix',
@@ -69,20 +163,10 @@ export class DockerServerManager {
           `${root}:/srv/instance`,
           `${wineDir}:/wineprefix`,
         ],
-        PortBindings: {
-          [`${payload.gamePort}/udp`]: [
-            { HostPort: String(payload.gamePort) },
-          ],
-          [`${payload.enginePort}/udp`]: [
-            { HostPort: String(payload.enginePort) },
-          ],
-        },
+        PortBindings: coopPortBindings(payload.gamePort, payload.enginePort),
         RestartPolicy: { Name: 'unless-stopped' },
       },
-      ExposedPorts: {
-        [`${payload.gamePort}/udp`]: {},
-        [`${payload.enginePort}/udp`]: {},
-      },
+      ExposedPorts: coopExposedPorts(),
     });
 
     const info = await container.inspect();
@@ -107,11 +191,20 @@ export class DockerServerManager {
     return writeServerConfig(this.config, payload, gamePort);
   }
 
-  async start(serverId: string): Promise<void> {
+  async start(
+    serverId: string,
+    ports?: { gamePort: number; enginePort: number },
+  ): Promise<void> {
     const container = await this.getByServerId(serverId);
     const info = await container.inspect();
-    if (installationBindIsReadOnly(info)) {
-      await this.recreateWithWritableInstall(serverId, info);
+    const resolved = ports ?? portsFromContainer(info);
+    if (this.needsRecreate(info, resolved)) {
+      if (!resolved) {
+        throw new Error(
+          'Cannot heal container publish mappings: missing game/engine ports',
+        );
+      }
+      await this.recreateHealthy(serverId, info, resolved);
       return;
     }
     if (!info.State.Running) {
@@ -127,23 +220,42 @@ export class DockerServerManager {
     }
   }
 
-  async restart(serverId: string): Promise<void> {
+  async restart(
+    serverId: string,
+    ports?: { gamePort: number; enginePort: number },
+  ): Promise<void> {
     const container = await this.getByServerId(serverId);
     const info = await container.inspect();
-    if (installationBindIsReadOnly(info)) {
-      await this.recreateWithWritableInstall(serverId, info);
+    const resolved = ports ?? portsFromContainer(info);
+    if (this.needsRecreate(info, resolved)) {
+      if (!resolved) {
+        throw new Error(
+          'Cannot heal container publish mappings: missing game/engine ports',
+        );
+      }
+      await this.recreateHealthy(serverId, info, resolved);
       return;
     }
     await container.restart({ t: 30 });
   }
 
+  private needsRecreate(
+    info: Dockerode.ContainerInspectInfo,
+    ports?: { gamePort: number; enginePort: number },
+  ): boolean {
+    if (installationBindIsReadOnly(info)) return true;
+    if (!ports) return false;
+    return portPublishNeedsHeal(info, ports.gamePort, ports.enginePort);
+  }
+
   /**
-   * Coop AutoSync needs a writable installation mount. Recreate containers
-   * that were created with `/opt/bannerlord:ro` so Restart/Start heals them.
+   * Heal RO install mounts and/or wrong port publish (pre-NAT containers that
+   * mapped hostPort→hostPort while Coop still listens on 4200/7210).
    */
-  private async recreateWithWritableInstall(
+  private async recreateHealthy(
     serverId: string,
     info: Dockerode.ContainerInspectInfo,
+    ports: { gamePort: number; enginePort: number },
   ): Promise<void> {
     const name = containerNameFor(serverId);
     const binds = (info.HostConfig.Binds ?? []).map((bind) =>
@@ -151,6 +263,12 @@ export class DockerServerManager {
         ? bind.replace(':/opt/bannerlord:ro', ':/opt/bannerlord')
         : bind,
     );
+
+    const labels = {
+      ...(info.Config.Labels ?? {}),
+      'bannerlord.game_port': String(ports.gamePort),
+      'bannerlord.engine_port': String(ports.enginePort),
+    };
 
     try {
       await this.docker.getContainer(name).remove({ force: true });
@@ -161,7 +279,7 @@ export class DockerServerManager {
     const container = await this.docker.createContainer({
       name,
       Image: info.Config.Image,
-      Labels: info.Config.Labels ?? undefined,
+      Labels: labels,
       Env: info.Config.Env ?? undefined,
       Tty: false,
       OpenStdin: true,
@@ -170,12 +288,12 @@ export class DockerServerManager {
       AttachStderr: true,
       HostConfig: {
         Binds: binds,
-        PortBindings: info.HostConfig.PortBindings ?? undefined,
+        PortBindings: coopPortBindings(ports.gamePort, ports.enginePort),
         RestartPolicy: info.HostConfig.RestartPolicy ?? {
           Name: 'unless-stopped',
         },
       },
-      ExposedPorts: info.Config.ExposedPorts ?? undefined,
+      ExposedPorts: coopExposedPorts(),
     });
     await container.start();
   }

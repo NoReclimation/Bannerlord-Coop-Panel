@@ -137,6 +137,8 @@ export function createServersRouter(deps: {
         await deps.servers.updateStatus(serverId, 'starting');
         const startRes = await deps.gateway.request(hostId, 'server.start', {
           serverId,
+          gamePort,
+          enginePort,
         });
         if (startRes.ok) {
           server =
@@ -187,6 +189,12 @@ export function createServersRouter(deps: {
 
       const response = await deps.gateway.request(server.hostId, action, {
         serverId: id,
+        ...(action === 'server.start' || action === 'server.restart'
+          ? {
+              gamePort: server.gamePort,
+              enginePort: server.enginePort,
+            }
+          : {}),
       });
 
       if (!response.ok) {

@@ -58,6 +58,13 @@ export interface ServerIdPayload {
   serverId: string;
 }
 
+/** start / restart — ports let the agent heal Docker publish mappings. */
+export interface ServerLifecyclePayload {
+  serverId: string;
+  gamePort: number;
+  enginePort: number;
+}
+
 export interface ServerCreateResult {
   containerId: string;
   containerName: string;

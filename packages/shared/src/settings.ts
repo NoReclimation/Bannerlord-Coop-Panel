@@ -12,8 +12,18 @@ export const DEFAULT_PORT_SETTINGS: PortSettings = {
 };
 
 /**
+ * Ports the Coop DedicatedServer process actually binds inside the container.
+ * Current builds hardcode these (server-config.json has no port key); the panel
+ * publishes host gamePort/enginePort → these container ports via Docker NAT.
+ */
+export const COOP_CONTAINER_LISTEN = {
+  gamePort: 4200,
+  enginePort: 7210,
+} as const;
+
+/**
  * Process-level Coop server-config fields the panel manages.
- * `steam` is always forced false; `port` is allocator-owned.
+ * `steam` is always forced false; `port` is allocator-owned (Docker publish).
  */
 export interface ServerProcessConfig {
   saveName: string;

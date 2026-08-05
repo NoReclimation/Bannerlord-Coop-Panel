@@ -44,6 +44,24 @@ export function DashboardPage() {
     }
   }
 
+  async function onDelete(id: string) {
+    const target = servers.find((s) => s.id === id);
+    const label = target?.name ?? 'this server';
+    if (
+      !window.confirm(
+        `Remove "${label}"? This deletes the container. Saves and backups on disk are kept.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.deleteServer(id);
+      setServers((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -107,6 +125,9 @@ export function DashboardPage() {
               key={server.id}
               server={server}
               onControl={(id, action) => void onControl(id, action)}
+              onDelete={
+                canWrite ? (id) => void onDelete(id) : undefined
+              }
             />
           ))}
         </div>

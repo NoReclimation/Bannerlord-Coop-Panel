@@ -13,6 +13,7 @@ import type {
   ServerBackupRestorePayload,
   ServerCreatePayload,
   ServerIdPayload,
+  ServerLifecyclePayload,
   ServerPutConfigPayload,
 } from '@bannerlord-panel/shared';
 import type { DockerServerManager } from '../docker/server-manager.js';
@@ -48,8 +49,11 @@ export class AgentCommandRouter {
           return { requestId: request.requestId, ok: true, result };
         }
         case 'server.start': {
-          const { serverId } = request.payload as ServerIdPayload;
-          await this.docker.start(serverId);
+          const payload = request.payload as ServerLifecyclePayload;
+          await this.docker.start(payload.serverId, {
+            gamePort: payload.gamePort,
+            enginePort: payload.enginePort,
+          });
           return { requestId: request.requestId, ok: true };
         }
         case 'server.stop': {
@@ -58,8 +62,11 @@ export class AgentCommandRouter {
           return { requestId: request.requestId, ok: true };
         }
         case 'server.restart': {
-          const { serverId } = request.payload as ServerIdPayload;
-          await this.docker.restart(serverId);
+          const payload = request.payload as ServerLifecyclePayload;
+          await this.docker.restart(payload.serverId, {
+            gamePort: payload.gamePort,
+            enginePort: payload.enginePort,
+          });
           return { requestId: request.requestId, ok: true };
         }
         case 'server.kill': {

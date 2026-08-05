@@ -229,7 +229,11 @@ export function createBackupsRouter(deps: {
           const start = await deps.gateway.request(
             server.hostId,
             'server.start',
-            { serverId },
+            {
+              serverId,
+              gamePort: server.gamePort,
+              enginePort: server.enginePort,
+            },
           );
           if (!start.ok) {
             await deps.servers.updateStatus(serverId, 'error', {

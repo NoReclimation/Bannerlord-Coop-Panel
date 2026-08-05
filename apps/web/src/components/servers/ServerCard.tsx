@@ -15,11 +15,15 @@ function statusTone(status: string): 'success' | 'danger' | 'muted' | 'accent' {
 export function ServerCard({
   server,
   onControl,
+  onDelete,
 }: {
   server: GameServerRecord;
   onControl: (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => void;
+  onDelete?: (id: string) => void;
 }) {
   const { can } = useAuth();
+  const canControl = can('servers:control');
+  const canWrite = can('servers:write');
 
   return (
     <Card className="flex flex-col p-4">
@@ -53,32 +57,45 @@ export function ServerCard({
         </div>
       </dl>
 
-      {can('servers:control') ? (
+      {canControl || (canWrite && onDelete) ? (
         <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-          <Button size="sm" onClick={() => onControl(server.id, 'start')}>
-            Start
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onControl(server.id, 'stop')}
-          >
-            Stop
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onControl(server.id, 'restart')}
-          >
-            Restart
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => onControl(server.id, 'kill')}
-          >
-            Kill
-          </Button>
+          {canControl ? (
+            <>
+              <Button size="sm" onClick={() => onControl(server.id, 'start')}>
+                Start
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onControl(server.id, 'stop')}
+              >
+                Stop
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onControl(server.id, 'restart')}
+              >
+                Restart
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => onControl(server.id, 'kill')}
+              >
+                Kill
+              </Button>
+            </>
+          ) : null}
+          {canWrite && onDelete ? (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => onDelete(server.id)}
+            >
+              Delete
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </Card>

@@ -11,7 +11,7 @@ export type {
   ServerStatus,
 } from './game-server.js';
 export type { PortSettings, ServerProcessConfig } from './settings.js';
-export { DEFAULT_PORT_SETTINGS } from './settings.js';
+export { COOP_CONTAINER_LISTEN, DEFAULT_PORT_SETTINGS } from './settings.js';
 export type {
   AgentHeartbeatPayload,
   ConsoleCommandPayload,
@@ -38,6 +38,7 @@ export type {
   ServerCreatePayload,
   ServerCreateResult,
   ServerIdPayload,
+  ServerLifecyclePayload,
   ServerPutConfigPayload,
   ServerRuntimeStatus,
 } from './agent-protocol.js';

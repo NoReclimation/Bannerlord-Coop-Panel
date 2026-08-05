@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { GameServerRecord } from '@bannerlord-panel/shared';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -15,10 +15,14 @@ type Tab = 'console' | 'files' | 'schedules' | 'backups' | 'settings';
 
 export function ServerPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const { can } = useAuth();
+  const canControl = can('servers:control');
+  const canWrite = can('servers:write');
   const [server, setServer] = useState<GameServerRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('console');
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +44,25 @@ export function ServerPage() {
       setServer(data.server);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Control failed');
+    }
+  }
+
+  async function removeServer() {
+    if (!server) return;
+    if (
+      !window.confirm(
+        `Remove "${server.name}"? This deletes the container. Saves and backups on disk are kept.`,
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.deleteServer(server.id);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+      setDeleting(false);
     }
   }
 
@@ -76,32 +99,46 @@ export function ServerPage() {
             Port {server.gamePort} · Install {server.installationId}
           </p>
         </div>
-        {can('servers:control') ? (
+        {canControl || canWrite ? (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => void control('start')}>
-              Start
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void control('stop')}
-            >
-              Stop
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void control('restart')}
-            >
-              Restart
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => void control('kill')}
-            >
-              Kill
-            </Button>
+            {canControl ? (
+              <>
+                <Button size="sm" onClick={() => void control('start')}>
+                  Start
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void control('stop')}
+                >
+                  Stop
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void control('restart')}
+                >
+                  Restart
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => void control('kill')}
+                >
+                  Kill
+                </Button>
+              </>
+            ) : null}
+            {canWrite ? (
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={deleting}
+                onClick={() => void removeServer()}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>

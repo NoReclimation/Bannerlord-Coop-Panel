@@ -32,12 +32,13 @@ export async function ensureServerFilesystem(
   await mkdir(logsDir, { recursive: true });
   await mkdir(wineDir, { recursive: true });
 
+  // Coop DedicatedServer ignores unknown keys (including `port`) and always
+  // listens on UDP 4200 inside the container; host publish is Docker NAT.
   const serverConfig = {
     saveName: payload.saveName,
     autosaveMinutes: payload.autosaveMinutes,
     password: payload.password,
     logFile: payload.logFile,
-    port: payload.gamePort,
     steam: false as const,
   };
 
@@ -114,18 +115,17 @@ export async function writeServerConfig(
   const dataDir = join(root, 'data');
   await mkdir(dataDir, { recursive: true });
 
-  const process = {
+  const fileProcess = {
     saveName: payload.process.saveName,
     autosaveMinutes: payload.process.autosaveMinutes,
     password: payload.process.password,
     logFile: payload.process.logFile,
-    port: gamePort,
     steam: false as const,
   };
 
   await writeFile(
     join(dataDir, 'server-config.json'),
-    `${JSON.stringify(process, null, 2)}\n`,
+    `${JSON.stringify(fileProcess, null, 2)}\n`,
     'utf8',
   );
   await writeFile(
@@ -142,7 +142,7 @@ export async function writeServerConfig(
   );
 
   return {
-    process,
+    process: { ...fileProcess, port: gamePort },
     modConfig: payload.modConfig,
   };
 }
