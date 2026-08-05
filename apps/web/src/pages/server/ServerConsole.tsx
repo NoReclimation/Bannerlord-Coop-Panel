@@ -3,12 +3,12 @@ import { io, type Socket } from 'socket.io-client';
 import Anser from 'anser';
 import {
   WsEvents,
-  parsePulsePlayerCount,
   type ConsoleLinePayload,
   type ConsoleStatusPayload,
   type PlayerCountPayload,
 } from '@bannerlord-panel/shared';
 import { getAccessToken } from '@/lib/api';
+import { parsePulsePlayerCount } from '@/lib/pulse';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
