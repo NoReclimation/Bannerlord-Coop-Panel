@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Game package drop-ins (replace anytime; not app source)
+DedicatedServer/
+CoopData/
+DedicatedServer.zip
+CoopData.zip
+
+# Staging drop zone contents (keep folder via .gitkeep)
+staging/**
+!staging/.gitkeep
+
+# Local panel data (if developed against a relative data root)
+data/
+.panel-data/
+var/
+
+# Large / binary noise
+*.exe
+*.dll
+*.sav
+*.tpac

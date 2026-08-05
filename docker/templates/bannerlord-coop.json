@@ -1,0 +1,15 @@
+{
+  "image": "bannerlord-panel/runtime:latest",
+  "networkMode": "bridge",
+  "restartPolicy": "unless-stopped",
+  "mounts": {
+    "install": "/opt/bannerlord",
+    "instance": "/srv/instance",
+    "wineprefix": "/wineprefix"
+  },
+  "env": {
+    "WINEPREFIX": "/wineprefix",
+    "WINEARCH": "win64",
+    "WINEDEBUG": "-all"
+  }
+}

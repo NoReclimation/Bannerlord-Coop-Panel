@@ -1,0 +1,28 @@
+{
+  "name": "bannerlord-panel",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Linux-native Bannerlord Coop dedicated server orchestration panel",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r --parallel --filter @bannerlord-panel/api --filter @bannerlord-panel/agent --filter @bannerlord-panel/web run dev",
+    "dev:api": "pnpm --filter @bannerlord-panel/api dev",
+    "dev:agent": "pnpm --filter @bannerlord-panel/agent dev",
+    "dev:web": "pnpm --filter @bannerlord-panel/web dev",
+    "start:amp": "node scripts/amp-runner.mjs",
+    "typecheck": "pnpm -r run typecheck",
+    "db:up": "docker compose -f docker/compose/docker-compose.yml up -d",
+    "db:down": "docker compose -f docker/compose/docker-compose.yml down",
+    "migrate": "pnpm --filter @bannerlord-panel/api migrate",
+    "build:runtime": "docker build -t bannerlord-panel/runtime:latest -f docker/images/bannerlord-runtime/Dockerfile docker/images/bannerlord-runtime",
+    "import:installation": "tsx scripts/import-installation.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
