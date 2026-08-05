@@ -40,14 +40,6 @@ export function ServerCard({
 
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <div>
-          <dt className="text-muted">Version install</dt>
-          <dd className="truncate">{server.installationId}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Engine port</dt>
-          <dd>{server.enginePort}</dd>
-        </div>
-        <div>
           <dt className="text-muted">Last restart</dt>
           <dd>
             {server.lastRestartAt

@@ -101,9 +101,7 @@ export function InstallationsPage() {
         <div>
           <h2 className="text-2xl font-semibold">Installations</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Shared read-only Bannerlord Coop packages on the host. Upload the
-            DedicatedServer folder to the VPS (scp/rsync), then import it here.
-            Multi-GB browser upload is not used.
+            Shared read-only Bannerlord Coop packages on the host
           </p>
         </div>
         <Button variant="secondary" disabled={busy} onClick={() => void load()}>
