@@ -12,8 +12,10 @@ import type {
   InstallationInspectResult,
   Permission,
   ScheduledTask,
+  ServerAnalytics,
   ServerConfigBundle,
   UpdateScheduledTaskInput,
+  AnalyticsRange,
 } from '@bannerlord-panel/shared';
 
 const ACCESS_KEY = 'bp.accessToken';
@@ -124,6 +126,12 @@ export const api = {
   },
   getServer(id: string) {
     return request<{ server: GameServerRecord }>(`/api/servers/${id}`);
+  },
+  getServerAnalytics(id: string, range: AnalyticsRange = '7d') {
+    const q = new URLSearchParams({ range });
+    return request<{ analytics: ServerAnalytics }>(
+      `/api/servers/${id}/analytics?${q}`,
+    );
   },
   controlServer(id: string, action: 'start' | 'stop' | 'restart' | 'kill') {
     return request<{ server: GameServerRecord }>(

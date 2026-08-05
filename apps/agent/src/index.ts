@@ -17,14 +17,32 @@ async function main(): Promise<void> {
   const files = new ServerFileManager(config);
   const backups = new BackupManager(config);
   const installations = new InstallationManager(config);
-  const router = new AgentCommandRouter(manager, files, backups, installations);
 
   await installations.ensureDirs();
 
   const connectionRef: { current: ApiConnection | null } = { current: null };
-  const consoleStreamer = new ConsoleStreamer(docker, (line) => {
-    connectionRef.current?.emitConsoleLine(line);
-  });
+  const consoleStreamer = new ConsoleStreamer(
+    docker,
+    (line) => {
+      connectionRef.current?.emitConsoleLine(line);
+    },
+    (players) => {
+      connectionRef.current?.emitPlayerCount(players);
+    },
+    (roster) => {
+      connectionRef.current?.emitPlayerRoster(roster);
+    },
+    (left) => {
+      connectionRef.current?.emitPlayerLeft(left);
+    },
+  );
+  const router = new AgentCommandRouter(
+    manager,
+    files,
+    backups,
+    installations,
+    consoleStreamer,
+  );
 
   const connection = new ApiConnection(config, router, consoleStreamer);
   connectionRef.current = connection;

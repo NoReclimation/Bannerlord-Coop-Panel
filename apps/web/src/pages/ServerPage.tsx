@@ -10,8 +10,9 @@ import { ServerConsole } from './server/ServerConsole';
 import { ServerFileManager } from './server/ServerFileManager';
 import { ServerSchedules } from './server/ServerSchedules';
 import { ServerBackups } from './server/ServerBackups';
+import { ServerAnalyticsPanel } from './server/ServerAnalytics';
 
-type Tab = 'console' | 'files' | 'schedules' | 'backups' | 'settings';
+type Tab = 'console' | 'analytics' | 'files' | 'schedules' | 'backups' | 'settings';
 
 export function ServerPage() {
   const { id = '' } = useParams();
@@ -155,6 +156,13 @@ export function ServerPage() {
         </Button>
         <Button
           size="sm"
+          variant={tab === 'analytics' ? 'primary' : 'ghost'}
+          onClick={() => setTab('analytics')}
+        >
+          Analytics
+        </Button>
+        <Button
+          size="sm"
           variant={tab === 'files' ? 'primary' : 'ghost'}
           onClick={() => setTab('files')}
         >
@@ -185,6 +193,8 @@ export function ServerPage() {
 
       {tab === 'console' ? (
         <ServerConsole serverId={server.id} />
+      ) : tab === 'analytics' ? (
+        <ServerAnalyticsPanel serverId={server.id} />
       ) : tab === 'files' ? (
         <ServerFileManager serverId={server.id} />
       ) : tab === 'schedules' ? (

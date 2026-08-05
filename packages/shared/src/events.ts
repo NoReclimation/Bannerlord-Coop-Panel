@@ -3,6 +3,9 @@ export const WsEvents = {
   // Agent → API
   AgentHeartbeat: 'agent:heartbeat',
   AgentConsole: 'agent:console',
+  AgentPlayerCount: 'agent:player-count',
+  AgentPlayerRoster: 'agent:player-roster',
+  AgentPlayerLeft: 'agent:player-left',
   AgentStats: 'agent:stats',
   AgentTaskProgress: 'agent:task-progress',
   AgentServerState: 'agent:server-state',
@@ -24,6 +27,7 @@ export const WsEvents = {
   ServerStopped: 'server.stopped',
   ConsoleLine: 'console.line',
   MetricsSample: 'metrics.sample',
+  PlayerCount: 'server.playerCount',
   PlayerJoined: 'player.joined',
   PlayerLeft: 'player.left',
   RestartCountdown: 'restart.countdown',
@@ -53,6 +57,34 @@ export interface ConsoleStatusPayload {
   subscribed: boolean;
   streaming: boolean;
   message?: string;
+}
+
+export interface PlayerCountPayload {
+  serverId: string;
+  playerCount: number;
+  at: string;
+}
+
+export interface PlayerRosterEntry {
+  id: number;
+  name: string;
+  state?: string;
+  addr?: string;
+}
+
+/** Full `@DS@` players list snapshot from the agent. */
+export interface PlayerRosterPayload {
+  serverId: string;
+  players: PlayerRosterEntry[];
+  at: string;
+}
+
+/** Early leave signal from disconnect / parked-party lines. */
+export interface PlayerLeftPayload {
+  serverId: string;
+  peerId: number;
+  partyName?: string;
+  at: string;
 }
 
 export interface AgentHeartbeatPayload {

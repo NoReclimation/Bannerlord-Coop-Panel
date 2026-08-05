@@ -28,6 +28,9 @@ import { createBackupsRouter } from './routes/backups.js';
 import type { ScheduleRegistry } from './services/schedule-registry.js';
 import type { ScheduleRunner } from './services/schedule-runner.js';
 import type { BackupRegistry } from './services/backup-registry.js';
+import type { PlayerCountStore } from './services/player-count-store.js';
+import type { BrowserGateway } from './agent/browser-gateway.js';
+import type { PlaytimeRegistry } from './services/playtime-registry.js';
 
 export interface AppDeps {
   config: ApiConfig;
@@ -42,6 +45,9 @@ export interface AppDeps {
   schedules: ScheduleRegistry;
   scheduleRunner: ScheduleRunner;
   backups: BackupRegistry;
+  playerCounts: PlayerCountStore;
+  browserGateway: BrowserGateway;
+  playtime: PlaytimeRegistry;
 }
 
 export function createApp(deps: AppDeps): Express {

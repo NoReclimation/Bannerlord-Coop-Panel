@@ -3,8 +3,10 @@ import { io, type Socket } from 'socket.io-client';
 import Anser from 'anser';
 import {
   WsEvents,
+  parsePulsePlayerCount,
   type ConsoleLinePayload,
   type ConsoleStatusPayload,
+  type PlayerCountPayload,
 } from '@bannerlord-panel/shared';
 import { getAccessToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -60,6 +62,7 @@ export function ServerConsole({ serverId }: { serverId: string }) {
   const [command, setCommand] = useState('');
   const [history, setHistory] = useState<string[]>(() => loadHistory());
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [playerCount, setPlayerCount] = useState<number | null>(null);
   const lineId = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -84,6 +87,10 @@ export function ServerConsole({ serverId }: { serverId: string }) {
       at: payload.at,
       html: toHtml(payload.line, payload.stream),
     };
+    const fromPulse = parsePulsePlayerCount(payload.line);
+    if (fromPulse !== null) {
+      setPlayerCount(fromPulse);
+    }
     if (pausedRef.current) {
       bufferRef.current.push(entry);
       if (bufferRef.current.length > MAX_LINES) {
@@ -101,6 +108,7 @@ export function ServerConsole({ serverId }: { serverId: string }) {
       return;
     }
 
+    setPlayerCount(null);
     const socket = io('/client', {
       path: '/client-socket',
       transports: ['websocket', 'polling'],
@@ -129,6 +137,11 @@ export function ServerConsole({ serverId }: { serverId: string }) {
     socket.on(WsEvents.ConsoleLine, (payload: ConsoleLinePayload) => {
       if (payload.serverId !== serverId) return;
       appendLine(payload);
+    });
+
+    socket.on(WsEvents.PlayerCount, (payload: PlayerCountPayload) => {
+      if (payload.serverId !== serverId) return;
+      setPlayerCount(payload.playerCount);
     });
 
     socket.on(WsEvents.ConsoleStatus, (payload: ConsoleStatusPayload) => {
@@ -222,13 +235,27 @@ export function ServerConsole({ serverId }: { serverId: string }) {
         title="Live Console"
         description={status}
         action={
-          <span
-            className={cn(
-              'inline-flex size-2 rounded-full',
-              connected ? 'bg-success' : 'bg-danger',
-            )}
-            title={connected ? 'Connected' : 'Disconnected'}
-          />
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted">
+              {playerCount != null ? (
+                <>
+                  <span className="font-medium text-text">{playerCount}</span>
+                  {playerCount === 1
+                    ? ' player connected'
+                    : ' players connected'}
+                </>
+              ) : (
+                '— players connected'
+              )}
+            </span>
+            <span
+              className={cn(
+                'inline-flex size-2 rounded-full',
+                connected ? 'bg-success' : 'bg-danger',
+              )}
+              title={connected ? 'Connected' : 'Disconnected'}
+            />
+          </div>
         }
       />
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">

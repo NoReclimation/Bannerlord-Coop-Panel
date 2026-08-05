@@ -18,10 +18,29 @@ export type {
   ConsoleLinePayload,
   ConsoleStatusPayload,
   ConsoleSubscribePayload,
+  PlayerCountPayload,
+  PlayerLeftPayload,
+  PlayerRosterEntry,
+  PlayerRosterPayload,
   RestartCountdownPayload,
   WsEventName,
 } from './events.js';
 export { WsEvents } from './events.js';
+export { parsePulsePlayerCount } from './pulse.js';
+export {
+  parseDsEvent,
+  parsePartyRestored,
+  parsePlayerDisconnect,
+  stripAnsi,
+} from './ds-events.js';
+export type { DsEvent, DsPlayerEntry, DsPlayersEvent } from './ds-events.js';
+export type {
+  AnalyticsRange,
+  PlaytimePlayerSummary,
+  PlaytimeSeriesPoint,
+  PlaytimeSession,
+  ServerAnalytics,
+} from './analytics.js';
 export type {
   AgentCommandAction,
   AgentCommandRequest,

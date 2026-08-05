@@ -73,6 +73,8 @@ export interface GameServerRecord {
   logFile: boolean;
   lastRestartAt?: string | null;
   errorMessage?: string | null;
+  /** Live count from DedicatedServer pulse logs; null when unknown / stopped. */
+  playerCount?: number | null;
   createdAt: string;
   updatedAt: string;
 }

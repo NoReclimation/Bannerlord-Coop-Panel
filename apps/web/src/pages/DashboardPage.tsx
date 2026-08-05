@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { GameServerRecord } from '@bannerlord-panel/shared';
-import { api } from '@/lib/api';
+import { io } from 'socket.io-client';
+import {
+  WsEvents,
+  type GameServerRecord,
+  type PlayerCountPayload,
+} from '@bannerlord-panel/shared';
+import { api, getAccessToken } from '@/lib/api';
 import { ServerCard } from '@/components/servers/ServerCard';
 import { CreateServerPanel } from '@/components/servers/CreateServerPanel';
 import { Button } from '@/components/ui/button';
@@ -31,6 +36,32 @@ export function DashboardPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) return;
+
+    const socket = io('/client', {
+      path: '/client-socket',
+      transports: ['websocket', 'polling'],
+      auth: { token },
+      reconnection: true,
+    });
+
+    socket.on(WsEvents.PlayerCount, (payload: PlayerCountPayload) => {
+      setServers((prev) =>
+        prev.map((s) =>
+          s.id === payload.serverId
+            ? { ...s, playerCount: payload.playerCount }
+            : s,
+        ),
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   async function onControl(
     id: string,
@@ -76,9 +107,7 @@ export function DashboardPage() {
             Refresh
           </Button>
           {canWrite ? (
-            <Button
-              onClick={() => setShowCreate((v) => !v)}
-            >
+            <Button onClick={() => setShowCreate((v) => !v)}>
               {showCreate ? 'Hide create' : 'Create server'}
             </Button>
           ) : null}

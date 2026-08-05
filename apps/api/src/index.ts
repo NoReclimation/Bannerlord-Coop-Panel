@@ -16,6 +16,8 @@ import { createApp } from './app.js';
 import { ScheduleRegistry } from './services/schedule-registry.js';
 import { ScheduleRunner } from './services/schedule-runner.js';
 import { BackupRegistry } from './services/backup-registry.js';
+import { PlayerCountStore } from './services/player-count-store.js';
+import { PlaytimeRegistry } from './services/playtime-registry.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -35,6 +37,8 @@ async function main(): Promise<void> {
   const ports = new PortAllocator(pool);
   const users = new UserRegistry(pool);
   const refreshTokens = new RefreshTokenStore(pool);
+  const playerCounts = new PlayerCountStore();
+  const playtime = new PlaytimeRegistry(pool);
 
   const defaultHost = await hosts.seedDefaultHost(config);
   console.log(
@@ -55,6 +59,8 @@ async function main(): Promise<void> {
     users,
     servers,
     gateway,
+    playerCounts,
+    playtime,
     config.CORS_ORIGIN,
   );
 
@@ -81,6 +87,9 @@ async function main(): Promise<void> {
     schedules,
     scheduleRunner,
     backups,
+    playerCounts,
+    browserGateway,
+    playtime,
   });
   httpServer.on('request', app);
 

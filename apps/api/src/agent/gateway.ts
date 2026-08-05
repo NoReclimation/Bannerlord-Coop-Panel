@@ -10,6 +10,9 @@ import {
   type ConsoleCommandPayload,
   type ConsoleLinePayload,
   type ConsoleSubscribePayload,
+  type PlayerCountPayload,
+  type PlayerLeftPayload,
+  type PlayerRosterPayload,
 } from '@bannerlord-panel/shared';
 import { verifyAgentToken } from '../config.js';
 import type { HostRegistry } from '../services/host-registry.js';
@@ -27,6 +30,12 @@ export class AgentGateway {
   private readonly io: SocketServer;
   private readonly sockets = new Map<string, Socket>();
   private consoleHandler: ((payload: ConsoleLinePayload) => void) | null =
+    null;
+  private playerCountHandler: ((payload: PlayerCountPayload) => void) | null =
+    null;
+  private rosterHandler: ((payload: PlayerRosterPayload) => void) | null =
+    null;
+  private playerLeftHandler: ((payload: PlayerLeftPayload) => void) | null =
     null;
 
   constructor(
@@ -68,6 +77,18 @@ export class AgentGateway {
 
   onConsoleLine(handler: (payload: ConsoleLinePayload) => void): void {
     this.consoleHandler = handler;
+  }
+
+  onPlayerCount(handler: (payload: PlayerCountPayload) => void): void {
+    this.playerCountHandler = handler;
+  }
+
+  onPlayerRoster(handler: (payload: PlayerRosterPayload) => void): void {
+    this.rosterHandler = handler;
+  }
+
+  onPlayerLeft(handler: (payload: PlayerLeftPayload) => void): void {
+    this.playerLeftHandler = handler;
   }
 
   getConnectedHostIds(): string[] {
@@ -215,6 +236,18 @@ export class AgentGateway {
 
     socket.on(WsEvents.AgentConsole, (payload: ConsoleLinePayload) => {
       this.consoleHandler?.(payload);
+    });
+
+    socket.on(WsEvents.AgentPlayerCount, (payload: PlayerCountPayload) => {
+      this.playerCountHandler?.(payload);
+    });
+
+    socket.on(WsEvents.AgentPlayerRoster, (payload: PlayerRosterPayload) => {
+      this.rosterHandler?.(payload);
+    });
+
+    socket.on(WsEvents.AgentPlayerLeft, (payload: PlayerLeftPayload) => {
+      this.playerLeftHandler?.(payload);
     });
 
     socket.on(WsEvents.AgentServerState, (payload: unknown) => {

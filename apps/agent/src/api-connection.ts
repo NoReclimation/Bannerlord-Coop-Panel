@@ -6,6 +6,9 @@ import {
   type ConsoleCommandPayload,
   type ConsoleLinePayload,
   type ConsoleSubscribePayload,
+  type PlayerCountPayload,
+  type PlayerLeftPayload,
+  type PlayerRosterPayload,
 } from '@bannerlord-panel/shared';
 import type { AgentConfig } from './config.js';
 import type { AgentCommandRouter } from './adapters/command-router.js';
@@ -32,6 +35,18 @@ export class ApiConnection {
     this.socket?.emit(WsEvents.AgentConsole, payload);
   }
 
+  emitPlayerCount(payload: PlayerCountPayload): void {
+    this.socket?.emit(WsEvents.AgentPlayerCount, payload);
+  }
+
+  emitPlayerRoster(payload: PlayerRosterPayload): void {
+    this.socket?.emit(WsEvents.AgentPlayerRoster, payload);
+  }
+
+  emitPlayerLeft(payload: PlayerLeftPayload): void {
+    this.socket?.emit(WsEvents.AgentPlayerLeft, payload);
+  }
+
   connect(): void {
     if (this.socket) return;
 
@@ -52,6 +67,12 @@ export class ApiConnection {
     this.socket.on('connect', () => {
       console.log(`[agent] connected to API at ${url}`);
       this.startHeartbeat();
+      void this.consoleStreamer.watchRunningContainers().catch((err) => {
+        console.warn(
+          '[agent] watchRunningContainers failed:',
+          err instanceof Error ? err.message : err,
+        );
+      });
     });
 
     this.socket.on('disconnect', (reason) => {

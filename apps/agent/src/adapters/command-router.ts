@@ -20,6 +20,7 @@ import type { DockerServerManager } from '../docker/server-manager.js';
 import type { ServerFileManager } from '../fs/server-file-manager.js';
 import type { BackupManager } from '../fs/backup-manager.js';
 import type { InstallationManager } from '../fs/installation-manager.js';
+import type { ConsoleStreamer } from '../docker/console-streamer.js';
 
 interface ConfigLookupPayload extends ServerIdPayload {
   gamePort: number;
@@ -38,6 +39,7 @@ export class AgentCommandRouter {
     private readonly files: ServerFileManager,
     private readonly backups: BackupManager,
     private readonly installations: InstallationManager,
+    private readonly consoleStreamer?: ConsoleStreamer,
   ) {}
 
   async handle(request: AgentCommandRequest): Promise<AgentCommandResponse> {
@@ -54,10 +56,12 @@ export class AgentCommandRouter {
             gamePort: payload.gamePort,
             enginePort: payload.enginePort,
           });
+          await this.consoleStreamer?.watchPulse(payload.serverId);
           return { requestId: request.requestId, ok: true };
         }
         case 'server.stop': {
           const { serverId } = request.payload as ServerIdPayload;
+          await this.consoleStreamer?.unwatchPulse(serverId);
           await this.docker.stop(serverId);
           return { requestId: request.requestId, ok: true };
         }
@@ -67,15 +71,18 @@ export class AgentCommandRouter {
             gamePort: payload.gamePort,
             enginePort: payload.enginePort,
           });
+          await this.consoleStreamer?.watchPulse(payload.serverId);
           return { requestId: request.requestId, ok: true };
         }
         case 'server.kill': {
           const { serverId } = request.payload as ServerIdPayload;
+          await this.consoleStreamer?.unwatchPulse(serverId);
           await this.docker.kill(serverId);
           return { requestId: request.requestId, ok: true };
         }
         case 'server.delete': {
           const { serverId } = request.payload as ServerIdPayload;
+          await this.consoleStreamer?.unwatchPulse(serverId);
           await this.docker.delete(serverId);
           return { requestId: request.requestId, ok: true };
         }

@@ -10,6 +10,9 @@ import type { ServerRegistry } from '../services/server-registry.js';
 import type { UserRegistry } from '../services/user-registry.js';
 import type { ApiConfig } from '../config.js';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
+import type { PlayerCountStore } from '../services/player-count-store.js';
+import type { BrowserGateway } from '../agent/browser-gateway.js';
+import type { PlaytimeRegistry } from '../services/playtime-registry.js';
 
 const createServerSchema = z.object({
   name: z.string().min(1).max(64),
@@ -22,6 +25,8 @@ const createServerSchema = z.object({
   start: z.boolean().optional(),
 });
 
+const analyticsRangeSchema = z.enum(['today', 'yesterday', '7d', '30d']);
+
 export function createServersRouter(deps: {
   config: ApiConfig;
   hosts: HostRegistry;
@@ -30,6 +35,9 @@ export function createServersRouter(deps: {
   ports: PortAllocator;
   gateway: AgentGateway;
   users: UserRegistry;
+  playerCounts: PlayerCountStore;
+  browserGateway: BrowserGateway;
+  playtime: PlaytimeRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
@@ -42,8 +50,27 @@ export function createServersRouter(deps: {
       const hostId =
         typeof req.query.hostId === 'string' ? req.query.hostId : undefined;
       const list = await deps.servers.list(hostId);
-      res.json({ servers: list });
+      res.json({ servers: deps.playerCounts.attachAll(list) });
     } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/servers/:id/analytics', auth, canRead, async (req, res, next) => {
+    try {
+      const server = await deps.servers.get(req.params.id);
+      if (!server) {
+        res.status(404).json({ error: 'Server not found' });
+        return;
+      }
+      const range = analyticsRangeSchema.parse(req.query.range ?? '7d');
+      const analytics = await deps.playtime.getAnalytics(server.id, range);
+      res.json({ analytics });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ error: err.flatten() });
+        return;
+      }
       next(err);
     }
   });
@@ -55,7 +82,7 @@ export function createServersRouter(deps: {
         res.status(404).json({ error: 'Server not found' });
         return;
       }
-      res.json({ server });
+      res.json({ server: deps.playerCounts.attach(server) });
     } catch (err) {
       next(err);
     }
@@ -209,11 +236,16 @@ export function createServersRouter(deps: {
         action === 'server.start' || action === 'server.restart'
           ? 'running'
           : 'stopped';
+      if (nextStatus === 'stopped') {
+        deps.browserGateway.clearPlayerCount(id);
+      }
       const updated = await deps.servers.updateStatus(id, nextStatus, {
         lastRestartAt: action === 'server.start' || action === 'server.restart',
         errorMessage: null,
       });
-      res.json({ server: updated });
+      res.json({
+        server: updated ? deps.playerCounts.attach(updated) : updated,
+      });
     } catch (err) {
       next(err);
     }
@@ -251,6 +283,7 @@ export function createServersRouter(deps: {
       }
 
       await deps.servers.delete(server.id);
+      deps.browserGateway.clearPlayerCount(server.id);
       res.status(204).send();
     } catch (err) {
       next(err);

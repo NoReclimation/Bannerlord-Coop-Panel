@@ -7,6 +7,7 @@ import {
   type ConsoleLinePayload,
   type ConsoleStatusPayload,
   type ConsoleSubscribePayload,
+  type PlayerCountPayload,
   type RestartCountdownPayload,
 } from '@bannerlord-panel/shared';
 import type { ApiConfig } from '../config.js';
@@ -14,6 +15,8 @@ import { verifyAccessToken } from '../auth/tokens.js';
 import type { UserRegistry } from '../services/user-registry.js';
 import type { ServerRegistry } from '../services/server-registry.js';
 import type { AgentGateway } from './gateway.js';
+import type { PlayerCountStore } from '../services/player-count-store.js';
+import type { PlaytimeRegistry } from '../services/playtime-registry.js';
 
 interface ClientSocketData {
   userId: string;
@@ -35,6 +38,8 @@ export class BrowserGateway {
     private readonly users: UserRegistry,
     private readonly servers: ServerRegistry,
     private readonly agents: AgentGateway,
+    private readonly playerCounts: PlayerCountStore,
+    private readonly playtime: PlaytimeRegistry,
     corsOrigin: string,
   ) {
     this.io = new SocketServer(httpServer, {
@@ -43,6 +48,33 @@ export class BrowserGateway {
     });
 
     this.agents.onConsoleLine((payload) => this.fanoutConsole(payload));
+    this.agents.onPlayerCount((payload) => this.handlePlayerCount(payload));
+    this.agents.onPlayerRoster((payload) => {
+      void this.playtime.applyRoster(payload).then(() => {
+        this.io
+          .of('/client')
+          .to(`server:${payload.serverId}`)
+          .emit(WsEvents.PlayerJoined, payload);
+        this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, {
+          serverId: payload.serverId,
+          playerCount: payload.players.length,
+          at: payload.at,
+        });
+        this.playerCounts.set({
+          serverId: payload.serverId,
+          playerCount: payload.players.length,
+          at: payload.at,
+        });
+      });
+    });
+    this.agents.onPlayerLeft((payload) => {
+      void this.playtime.applyLeave(payload).then(() => {
+        this.io
+          .of('/client')
+          .to(`server:${payload.serverId}`)
+          .emit(WsEvents.PlayerLeft, payload);
+      });
+    });
 
     this.io.of('/client').use(async (socket, next) => {
       try {
@@ -79,6 +111,8 @@ export class BrowserGateway {
     const data = socket.data as ClientSocketData;
     console.log(`[client-gateway] user ${data.userId} connected`);
 
+    void socket.join('servers');
+
     socket.on(
       WsEvents.ConsoleSubscribe,
       async (payload: ConsoleSubscribePayload) => {
@@ -106,6 +140,30 @@ export class BrowserGateway {
         void this.handleUnsubscribe(socket, serverId);
       }
     });
+  }
+
+  private handlePlayerCount(payload: PlayerCountPayload): void {
+    this.playerCounts.set(payload);
+    this.io.of('/client').to(`server:${payload.serverId}`).emit(
+      WsEvents.PlayerCount,
+      payload,
+    );
+    this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, payload);
+  }
+
+  clearPlayerCount(serverId: string): void {
+    this.playerCounts.clear(serverId);
+    void this.playtime.closeAllForServer(serverId);
+    const payload: PlayerCountPayload = {
+      serverId,
+      playerCount: 0,
+      at: new Date().toISOString(),
+    };
+    this.io.of('/client').to(`server:${serverId}`).emit(
+      WsEvents.PlayerCount,
+      payload,
+    );
+    this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, payload);
   }
 
   private fanoutConsole(payload: ConsoleLinePayload): void {
@@ -177,6 +235,15 @@ export class BrowserGateway {
       streaming: true,
       message: 'Live console connected',
     });
+
+    const known = this.playerCounts.get(serverId);
+    if (known !== null) {
+      socket.emit(WsEvents.PlayerCount, {
+        serverId,
+        playerCount: known,
+        at: new Date().toISOString(),
+      } satisfies PlayerCountPayload);
+    }
   }
 
   private async handleUnsubscribe(

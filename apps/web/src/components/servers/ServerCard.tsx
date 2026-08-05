@@ -55,6 +55,16 @@ export function ServerCard({
           <dt className="text-muted">Container</dt>
           <dd className="truncate">{server.containerName ?? '—'}</dd>
         </div>
+        <div>
+          <dt className="text-muted">Players connected</dt>
+          <dd>
+            {server.status === 'running' && server.playerCount != null
+              ? server.playerCount
+              : server.status === 'running'
+                ? '—'
+                : '0'}
+          </dd>
+        </div>
       </dl>
 
       {canControl || (canWrite && onDelete) ? (
