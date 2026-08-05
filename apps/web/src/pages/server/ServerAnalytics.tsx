@@ -1,13 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import type {
   AnalyticsRange,
   ServerAnalytics,
@@ -72,6 +63,7 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
     [data],
   );
 
+  const maxMinutes = Math.max(1, ...chartData.map((d) => d.minutes));
   const totalPlay = data?.players.reduce((n, p) => n + p.totalSeconds, 0) ?? 0;
 
   return (
@@ -123,52 +115,38 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
 
       <Card>
         <CardHeader title="Play time" description="Minutes played in each bucket" />
-        <div className="h-64 px-2 pb-4 pt-2">
+        <div className="px-4 pb-4 pt-2">
           {loading && !data ? (
-            <p className="px-4 text-sm text-muted">Loading…</p>
+            <p className="text-sm text-muted">Loading…</p>
           ) : chartData.every((d) => d.minutes === 0) ? (
-            <p className="px-4 text-sm text-muted">
+            <p className="text-sm text-muted">
               No playtime recorded for this range yet. Sessions start when
               `@DS@` player lists appear in the console.
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(42,58,85,0.7)" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: '#9aa8c0', fontSize: 11 }}
-                  axisLine={{ stroke: '#2a3a55' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: '#9aa8c0', fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                  unit="m"
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(61,184,168,0.08)' }}
-                  contentStyle={{
-                    background: '#121a2b',
-                    border: '1px solid #2a3a55',
-                    borderRadius: 8,
-                    color: '#e8eef8',
-                  }}
-                  formatter={(value: number) => [
-                    `${value} min`,
-                    'Play time',
-                  ]}
-                />
-                <Bar
-                  dataKey="minutes"
-                  fill="#3db8a8"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={42}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex h-52 items-end gap-1.5 border-b border-border pt-4">
+              {chartData.map((d) => {
+                const heightPct = (d.minutes / maxMinutes) * 100;
+                return (
+                  <div
+                    key={d.label}
+                    className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                    title={`${d.label}: ${d.minutes} min`}
+                  >
+                    <span className="invisible text-[10px] text-muted group-hover:visible">
+                      {d.minutes > 0 ? `${d.minutes}m` : ''}
+                    </span>
+                    <div
+                      className="w-full max-w-10 rounded-t bg-accent/90 transition-colors group-hover:bg-accent"
+                      style={{ height: `${Math.max(d.minutes > 0 ? 4 : 0, heightPct)}%` }}
+                    />
+                    <span className="w-full truncate text-center text-[10px] text-muted">
+                      {d.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </Card>
