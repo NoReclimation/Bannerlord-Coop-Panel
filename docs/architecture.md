@@ -114,9 +114,9 @@ Shared RO install mirrors `engine/` (bin, Modules, Parameters, dotnet). Per-serv
 
 Container mounts:
 
-- **RO:** installation → `/opt/bannerlord`
+- **RW:** installation → `/opt/bannerlord` (Coop AutoSync writes `AutoSyncExport` under the Coop module; cannot be `:ro`)
 - **RO:** selected global mods (when supported)
-- **RW:** `servers/<id>/data` → `/srv/data` (`--data-dir /srv/data`)
+- **RW:** `servers/<id>/` → `/srv/instance` (`--data-dir /srv/instance/data`)
 - **RW:** wineprefix, tmp
 
 Workspace `DedicatedServer/` and `CoopData/` are **staging inputs only** (gitignored). Containers never mount the workspace copies. See [replacing-installations.md](./replacing-installations.md).

@@ -244,7 +244,7 @@ UDP port is auto-assigned (**4200**, then 4201, …).
 
 | Host path | Container | Mode |
 |-----------|-----------|------|
-| `installations/<id>/` | `/opt/bannerlord` | read-only |
+| `installations/<id>/` | `/opt/bannerlord` | read-write (Coop AutoSync writes under the Coop module) |
 | `servers/<uuid>/data/` | `/srv/data` | read-write (`--data-dir`) |
 | `servers/<uuid>/wineprefix/` | wine prefix | read-write |
 

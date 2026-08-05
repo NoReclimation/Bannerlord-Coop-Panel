@@ -12,6 +12,12 @@ export WINEDEBUG="${WINEDEBUG:--all}"
 
 mkdir -p "${DATA_DIR}/Game Saves" "${DATA_DIR}/logs" "${WINEPREFIX}"
 
+# Wine refuses a prefix not owned by the current euid. Bind mounts keep the
+# host agent UID, while this image runs as root — fix ownership before wine.
+if [[ "$(id -u)" -eq 0 ]]; then
+  chown -R root:root "${WINEPREFIX}" || true
+fi
+
 if [[ ! -f "${EXE}" ]]; then
   echo "[entrypoint] ERROR: missing ${EXE}" >&2
   echo "[entrypoint] Mount a shared installation at ${INSTALL_ROOT}" >&2

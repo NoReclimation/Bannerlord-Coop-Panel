@@ -13,6 +13,14 @@ import {
   writeServerConfig,
 } from './filesystem.js';
 
+function installationBindIsReadOnly(
+  info: Dockerode.ContainerInspectInfo,
+): boolean {
+  return (info.HostConfig.Binds ?? []).some((bind) =>
+    bind.includes(':/opt/bannerlord:ro'),
+  );
+}
+
 export class DockerServerManager {
   constructor(
     private readonly docker: Dockerode,
@@ -54,8 +62,10 @@ export class DockerServerManager {
       AttachStdout: true,
       AttachStderr: true,
       HostConfig: {
+        // Coop AutoSync writes AssemblyInfo.cs under
+        // engine/Modules/Coop/.../AutoSyncExport — install cannot be :ro.
         Binds: [
-          `${payload.installationPath}:/opt/bannerlord:ro`,
+          `${payload.installationPath}:/opt/bannerlord`,
           `${root}:/srv/instance`,
           `${wineDir}:/wineprefix`,
         ],
@@ -100,6 +110,10 @@ export class DockerServerManager {
   async start(serverId: string): Promise<void> {
     const container = await this.getByServerId(serverId);
     const info = await container.inspect();
+    if (installationBindIsReadOnly(info)) {
+      await this.recreateWithWritableInstall(serverId, info);
+      return;
+    }
     if (!info.State.Running) {
       await container.start();
     }
@@ -115,7 +129,55 @@ export class DockerServerManager {
 
   async restart(serverId: string): Promise<void> {
     const container = await this.getByServerId(serverId);
+    const info = await container.inspect();
+    if (installationBindIsReadOnly(info)) {
+      await this.recreateWithWritableInstall(serverId, info);
+      return;
+    }
     await container.restart({ t: 30 });
+  }
+
+  /**
+   * Coop AutoSync needs a writable installation mount. Recreate containers
+   * that were created with `/opt/bannerlord:ro` so Restart/Start heals them.
+   */
+  private async recreateWithWritableInstall(
+    serverId: string,
+    info: Dockerode.ContainerInspectInfo,
+  ): Promise<void> {
+    const name = containerNameFor(serverId);
+    const binds = (info.HostConfig.Binds ?? []).map((bind) =>
+      bind.includes(':/opt/bannerlord:ro')
+        ? bind.replace(':/opt/bannerlord:ro', ':/opt/bannerlord')
+        : bind,
+    );
+
+    try {
+      await this.docker.getContainer(name).remove({ force: true });
+    } catch {
+      // already gone
+    }
+
+    const container = await this.docker.createContainer({
+      name,
+      Image: info.Config.Image,
+      Labels: info.Config.Labels ?? undefined,
+      Env: info.Config.Env ?? undefined,
+      Tty: false,
+      OpenStdin: true,
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      HostConfig: {
+        Binds: binds,
+        PortBindings: info.HostConfig.PortBindings ?? undefined,
+        RestartPolicy: info.HostConfig.RestartPolicy ?? {
+          Name: 'unless-stopped',
+        },
+      },
+      ExposedPorts: info.Config.ExposedPorts ?? undefined,
+    });
+    await container.start();
   }
 
   async kill(serverId: string): Promise<void> {
