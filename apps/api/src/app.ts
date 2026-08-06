@@ -15,7 +15,6 @@ import type { ServerRegistry } from './services/server-registry.js';
 import type { UserRegistry } from './services/user-registry.js';
 import type { RefreshTokenStore } from './services/refresh-token-store.js';
 import type { AgentGateway } from './agent/gateway.js';
-import { requireAuth, requirePermission } from './auth/middleware.js';
 import { createHealthRouter } from './routes/health.js';
 import { createHostsRouter } from './routes/hosts.js';
 import { createSettingsRouter } from './routes/settings.js';
@@ -64,20 +63,10 @@ export function createApp(deps: AppDeps): Express {
   app.use(createHealthRouter(deps.pool));
   app.use('/api', createAuthRouter(deps));
 
-  const auth = requireAuth(deps.config, deps.users);
-
-  app.use(
-    '/api',
-    auth,
-    requirePermission('hosts:read'),
-    createHostsRouter(deps.hosts),
-  );
-  app.use(
-    '/api',
-    auth,
-    requirePermission('settings:read'),
-    createSettingsRouter(deps.pool, deps.gateway),
-  );
+  // Permissions are enforced per-route inside each router. Do not mount
+  // requirePermission on `/api` here — it would gate every subsequent route.
+  app.use('/api', createHostsRouter(deps));
+  app.use('/api', createSettingsRouter(deps));
   app.use('/api', createInstallationsRouter(deps));
   app.use('/api', createServersRouter(deps));
   app.use('/api', createFilesRouter(deps));

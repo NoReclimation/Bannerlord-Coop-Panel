@@ -8,6 +8,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      // Prefer shared source so auth helpers stay in sync without a stale dist.
+      '@bannerlord-panel/shared': resolve(
+        __dirname,
+        '../../packages/shared/src/index.ts',
+      ),
     },
   },
   server: {

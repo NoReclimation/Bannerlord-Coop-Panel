@@ -1,4 +1,5 @@
 import type { AuthUser, UserRole } from '@bannerlord-panel/shared';
+import { normalizeRole } from '@bannerlord-panel/shared';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { hashPassword } from '../auth/passwords.js';
@@ -7,7 +8,7 @@ interface UserRow {
   id: string;
   username: string;
   password_hash: string;
-  role: UserRole;
+  role: string;
   display_name: string | null;
   disabled: boolean;
   created_at: Date;
@@ -18,7 +19,7 @@ function toAuthUser(row: UserRow): AuthUser {
   return {
     id: row.id,
     username: row.username,
-    role: row.role,
+    role: normalizeRole(row.role),
     displayName: row.display_name,
     disabled: row.disabled,
     createdAt: row.created_at.toISOString(),

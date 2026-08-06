@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await api.me();
         if (bootEpoch !== authEpoch.current) return;
         setUser(me.user);
-        setPermissions(me.permissions);
+        setPermissions(me.permissions ?? []);
       } catch {
         if (bootEpoch !== authEpoch.current) return;
         clearTokens();
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await api.login(username, password);
     setTokens(data.accessToken, data.refreshToken);
     setUser(data.user);
-    setPermissions(data.permissions);
+    setPermissions(data.permissions ?? []);
     setLoading(false);
   }, []);
 
@@ -85,7 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user) return false;
       // Role matrix is source of truth; also honor server-issued list if present.
       return (
-        hasPermission(user.role, permission) || permissions.includes(permission)
+        hasPermission(user.role, permission) ||
+        (permissions ?? []).includes(permission)
       );
     },
     [user, permissions],

@@ -72,15 +72,24 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
 };
 
-export function permissionsFor(role: UserRole): readonly Permission[] {
-  return ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.user;
+/** Map legacy DB roles (e.g. `viewer`) and unknown values onto the current matrix. */
+export function normalizeRole(role: string | null | undefined): UserRole {
+  if (role === 'admin' || role === 'moderator' || role === 'user') return role;
+  // Pre-008 schema used `viewer` for the limited end-user role.
+  if (role === 'viewer') return 'user';
+  return 'user';
 }
 
-export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return (ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.user).includes(permission);
+export function permissionsFor(role: string): readonly Permission[] {
+  return ROLE_PERMISSIONS[normalizeRole(role)];
+}
+
+export function hasPermission(role: string, permission: Permission): boolean {
+  return ROLE_PERMISSIONS[normalizeRole(role)].includes(permission);
 }
 
 /** Admins and moderators see every server; users only see assigned ones. */
-export function seesAllServers(role: UserRole): boolean {
-  return role === 'admin' || role === 'moderator';
+export function seesAllServers(role: string): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === 'admin' || normalized === 'moderator';
 }

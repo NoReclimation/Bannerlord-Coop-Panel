@@ -68,7 +68,12 @@ export type {
 } from './agent-protocol.js';
 export { DEFAULT_BACKUP_RETENTION } from './agent-protocol.js';
 export type { AuthUser, Permission, UserRole } from './auth.js';
-export { hasPermission, permissionsFor, seesAllServers } from './auth.js';
+export {
+  hasPermission,
+  normalizeRole,
+  permissionsFor,
+  seesAllServers,
+} from './auth.js';
 export type {
   FileEntry,
   FsCompressPayload,
