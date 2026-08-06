@@ -13,7 +13,14 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user) return <Navigate to="/" replace />;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted">
+        Loading…
+      </div>
+    );
+  }
+  if (user) return <Navigate to="/" replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -59,7 +66,7 @@ export function LoginPage() {
             />
           </div>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <Button className="w-full" disabled={busy}>
+          <Button type="submit" className="w-full" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>

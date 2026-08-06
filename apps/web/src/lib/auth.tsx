@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -31,34 +32,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Bumped on login/logout so a stale boot `me()` can't wipe fresh tokens. */
+  const authEpoch = useRef(0);
 
   useEffect(() => {
+    const bootEpoch = authEpoch.current;
     const boot = async () => {
       if (!getAccessToken()) {
-        setLoading(false);
+        if (bootEpoch === authEpoch.current) setLoading(false);
         return;
       }
       try {
         const me = await api.me();
+        if (bootEpoch !== authEpoch.current) return;
         setUser(me.user);
         setPermissions(me.permissions);
       } catch {
+        if (bootEpoch !== authEpoch.current) return;
         clearTokens();
+        setUser(null);
+        setPermissions([]);
       } finally {
-        setLoading(false);
+        if (bootEpoch === authEpoch.current) setLoading(false);
       }
     };
     void boot();
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
+    authEpoch.current += 1;
+    clearTokens();
     const data = await api.login(username, password);
     setTokens(data.accessToken, data.refreshToken);
     setUser(data.user);
     setPermissions(data.permissions);
+    setLoading(false);
   }, []);
 
   const logout = useCallback(async () => {
+    authEpoch.current += 1;
     try {
       await api.logout();
     } catch {

@@ -70,9 +70,9 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
 };
 
 export function permissionsFor(role: UserRole): readonly Permission[] {
-  return ROLE_PERMISSIONS[role];
+  return ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.user;
 }
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role].includes(permission);
+  return (ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.user).includes(permission);
 }

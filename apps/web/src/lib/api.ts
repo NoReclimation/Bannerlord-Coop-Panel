@@ -117,10 +117,16 @@ async function refreshSession(): Promise<boolean> {
 
 export const api = {
   login(username: string, password: string) {
-    return request<LoginResponse>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    });
+    // Never refresh-retry credential login — a stale refresh token + 401
+    // would rotate tokens and retry the password POST with the wrong semantics.
+    return request<LoginResponse>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      },
+      false,
+    );
   },
   me() {
     return request<{ user: AuthUser; permissions: Permission[] }>(
