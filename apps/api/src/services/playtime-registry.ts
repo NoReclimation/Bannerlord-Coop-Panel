@@ -341,19 +341,18 @@ export class PlaytimeRegistry {
     await this.pool.query(
       `UPDATE playtime_sessions
        SET player_name = CASE
-             WHEN $4::text IS NOT NULL AND player_name IN ('(joining)', '') THEN $4
-             WHEN $4::text IS NOT NULL AND $4 NOT IN ('(joining)', '') THEN $4
+             WHEN $3::text IS NOT NULL AND player_name IN ('(joining)', '') THEN $3
+             WHEN $3::text IS NOT NULL AND $3 NOT IN ('(joining)', '') THEN $3
              ELSE player_name
            END,
-           party_name = COALESCE($5, party_name),
-           hero_id = COALESCE($6, hero_id),
-           controller_id = COALESCE($7, controller_id),
-           address = COALESCE($8, address)
+           party_name = COALESCE($4, party_name),
+           hero_id = COALESCE($5, hero_id),
+           controller_id = COALESCE($6, controller_id),
+           address = COALESCE($7, address)
        WHERE server_id = $1 AND peer_id = $2 AND left_at IS NULL`,
       [
         serverId,
         peerId,
-        null,
         patch.playerName ?? null,
         patch.partyName ?? null,
         heroId,

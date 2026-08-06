@@ -54,36 +54,50 @@ export class BrowserGateway {
     this.agents.onConsoleLine((payload) => this.fanoutConsole(payload));
     this.agents.onPlayerCount((payload) => this.handlePlayerCount(payload));
     this.agents.onPlayerLeft((payload) => {
-      void this.playtime.applyLeave(payload).then(() => {
-        this.io
-          .of('/client')
-          .to(`server:${payload.serverId}`)
-          .emit(WsEvents.PlayerLeft, payload);
-      });
+      void this.playtime
+        .applyLeave(payload)
+        .then(() => {
+          this.io
+            .of('/client')
+            .to(`server:${payload.serverId}`)
+            .emit(WsEvents.PlayerLeft, payload);
+        })
+        .catch((err) => {
+          console.error('[playtime] applyLeave failed', err);
+        });
     });
     this.agents.onPlayerParty((payload) => {
-      void this.refreshSavePlayers(payload.serverId).then(() =>
-        this.playtime.applyParty(payload),
-      );
+      void this.refreshSavePlayers(payload.serverId)
+        .then(() => this.playtime.applyParty(payload))
+        .catch((err) => {
+          console.error('[playtime] applyParty failed', err);
+        });
     });
     this.agents.onPlayerRoster((payload) => {
-      void this.refreshSavePlayers(payload.serverId);
-      void this.playtime.applyRoster(payload).then(() => {
-        this.io
-          .of('/client')
-          .to(`server:${payload.serverId}`)
-          .emit(WsEvents.PlayerJoined, payload);
-        this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, {
-          serverId: payload.serverId,
-          playerCount: payload.players.length,
-          at: payload.at,
-        });
-        this.playerCounts.set({
-          serverId: payload.serverId,
-          playerCount: payload.players.length,
-          at: payload.at,
-        });
+      void this.refreshSavePlayers(payload.serverId).catch((err) => {
+        console.error('[playtime] refreshSavePlayers failed', err);
       });
+      void this.playtime
+        .applyRoster(payload)
+        .then(() => {
+          this.io
+            .of('/client')
+            .to(`server:${payload.serverId}`)
+            .emit(WsEvents.PlayerJoined, payload);
+          this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, {
+            serverId: payload.serverId,
+            playerCount: payload.players.length,
+            at: payload.at,
+          });
+          this.playerCounts.set({
+            serverId: payload.serverId,
+            playerCount: payload.players.length,
+            at: payload.at,
+          });
+        })
+        .catch((err) => {
+          console.error('[playtime] applyRoster failed', err);
+        });
     });
 
     this.io.of('/client').use(async (socket, next) => {
