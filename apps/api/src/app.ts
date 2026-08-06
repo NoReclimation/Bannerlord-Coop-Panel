@@ -31,6 +31,7 @@ import type { BackupRegistry } from './services/backup-registry.js';
 import type { PlayerCountStore } from './services/player-count-store.js';
 import type { BrowserGateway } from './agent/browser-gateway.js';
 import type { PlaytimeRegistry } from './services/playtime-registry.js';
+import type { DeleteRequestRegistry } from './services/delete-request-registry.js';
 
 export interface AppDeps {
   config: ApiConfig;
@@ -48,6 +49,7 @@ export interface AppDeps {
   playerCounts: PlayerCountStore;
   browserGateway: BrowserGateway;
   playtime: PlaytimeRegistry;
+  deleteRequests: DeleteRequestRegistry;
 }
 
 export function createApp(deps: AppDeps): Express {

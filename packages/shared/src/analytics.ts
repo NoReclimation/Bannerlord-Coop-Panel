@@ -6,6 +6,8 @@ export interface PlaytimeSession {
   peerId: number | null;
   playerName: string;
   partyName: string | null;
+  heroId: string | null;
+  controllerId: string | null;
   address: string | null;
   joinedAt: string;
   leftAt: string | null;
@@ -15,6 +17,9 @@ export interface PlaytimeSession {
 
 export interface PlaytimePlayerSummary {
   playerName: string;
+  partyName: string | null;
+  heroId: string | null;
+  controllerId: string | null;
   totalSeconds: number;
   sessionCount: number;
   lastSeenAt: string;

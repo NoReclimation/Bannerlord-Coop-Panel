@@ -6,10 +6,13 @@ import type {
   PlaytimeSeriesPoint,
   PlaytimeSession,
   PlayerLeftPayload,
+  PlayerPartyPayload,
   PlayerRosterEntry,
   PlayerRosterPayload,
+  SavePlayerIdentity,
   ServerAnalytics,
 } from '@bannerlord-panel/shared';
+import { partyNameToHeroId } from '@bannerlord-panel/shared';
 
 interface SessionRow {
   id: string;
@@ -17,6 +20,8 @@ interface SessionRow {
   peer_id: number | null;
   player_name: string;
   party_name: string | null;
+  hero_id: string | null;
+  controller_id: string | null;
   address: string | null;
   joined_at: Date;
   left_at: Date | null;
@@ -27,6 +32,19 @@ interface RosterPlayer {
   name: string;
   state?: string;
   addr?: string;
+  partyName?: string;
+}
+
+const JOINING = '(joining)';
+
+function isPlaceholderName(name: string): boolean {
+  return !name || name === JOINING || /^peer-\d+$/i.test(name);
+}
+
+function preferName(current: string, next: string): string {
+  if (isPlaceholderName(next)) return current;
+  if (isPlaceholderName(current)) return next;
+  return next;
 }
 
 function durationSeconds(joinedAt: Date, leftAt: Date | null, now = new Date()): number {
@@ -41,6 +59,8 @@ function toSession(row: SessionRow, now = new Date()): PlaytimeSession {
     peerId: row.peer_id,
     playerName: row.player_name,
     partyName: row.party_name,
+    heroId: row.hero_id,
+    controllerId: row.controller_id,
     address: row.address,
     joinedAt: row.joined_at.toISOString(),
     leftAt: row.left_at?.toISOString() ?? null,
@@ -79,29 +99,51 @@ export function rangeBounds(
 }
 
 /**
- * Tracks open play sessions from `@DS@` roster diffs and disconnect lines.
+ * Tracks open play sessions from `@DS@` roster diffs, Coop party lines, and save.json.
  */
 export class PlaytimeRegistry {
   /** serverId → peerId → player */
   private readonly rosters = new Map<string, Map<number, RosterPlayer>>();
+  /** serverId → partyName → save identity */
+  private readonly saveByParty = new Map<string, Map<string, SavePlayerIdentity>>();
+  /** serverId → peerId → partyName */
+  private readonly partyByPeer = new Map<string, Map<number, string>>();
 
   constructor(private readonly pool: Pool) {}
+
+  setSavePlayers(serverId: string, players: SavePlayerIdentity[]): void {
+    const map = new Map<string, SavePlayerIdentity>();
+    for (const p of players) {
+      map.set(p.partyName, p);
+    }
+    this.saveByParty.set(serverId, map);
+  }
 
   currentlyOnline(serverId: string): string[] {
     const roster = this.rosters.get(serverId);
     if (!roster) return [];
-    return [...roster.values()].map((p) => p.name).sort((a, b) => a.localeCompare(b));
+    return [...roster.values()]
+      .map((p) => {
+        const party = p.partyName ?? this.partyByPeer.get(serverId)?.get(p.id);
+        if (party && !isPlaceholderName(p.name)) return `${p.name} (${party})`;
+        return p.name;
+      })
+      .sort((a, b) => a.localeCompare(b));
   }
 
   async applyRoster(payload: PlayerRosterPayload): Promise<void> {
     const at = new Date(payload.at);
     const next = new Map<number, RosterPlayer>();
+    const parties = this.partyByPeer.get(payload.serverId);
+
     for (const p of payload.players) {
+      const partyName = parties?.get(p.id);
       next.set(p.id, {
         id: p.id,
         name: p.name,
         state: p.state,
         addr: p.addr,
+        partyName,
       });
     }
 
@@ -109,8 +151,19 @@ export class PlaytimeRegistry {
     this.rosters.set(payload.serverId, next);
 
     for (const [peerId, player] of next) {
-      if (!prev.has(peerId)) {
+      const was = prev.get(peerId);
+      if (!was) {
         await this.openSession(payload.serverId, player, at);
+        continue;
+      }
+      if (was.name !== player.name || was.addr !== player.addr) {
+        await this.updateOpenSession(payload.serverId, peerId, {
+          playerName: preferName(was.name, player.name),
+          address: player.addr,
+          partyName: player.partyName,
+        });
+        was.name = preferName(was.name, player.name);
+        was.addr = player.addr;
       }
     }
     for (const [peerId, player] of prev) {
@@ -120,23 +173,63 @@ export class PlaytimeRegistry {
     }
   }
 
+  async applyParty(payload: PlayerPartyPayload): Promise<void> {
+    const map =
+      this.partyByPeer.get(payload.serverId) ?? new Map<number, string>();
+    this.partyByPeer.set(payload.serverId, map);
+
+    if (payload.peerId !== undefined) {
+      map.set(payload.peerId, payload.partyName);
+      const roster = this.rosters.get(payload.serverId)?.get(payload.peerId);
+      if (roster) roster.partyName = payload.partyName;
+      await this.updateOpenSession(payload.serverId, payload.peerId, {
+        partyName: payload.partyName,
+      });
+      return;
+    }
+
+    // CreateNewPartyVisual has party but no peer — bind to lone joining peer if possible
+    const roster = this.rosters.get(payload.serverId);
+    if (!roster || roster.size !== 1) return;
+    const [peerId, player] = [...roster.entries()][0]!;
+    if (!map.has(peerId)) {
+      map.set(peerId, payload.partyName);
+      player.partyName = payload.partyName;
+      await this.updateOpenSession(payload.serverId, peerId, {
+        partyName: payload.partyName,
+      });
+    }
+  }
+
   async applyLeave(payload: PlayerLeftPayload): Promise<void> {
     const at = new Date(payload.at);
     const roster = this.rosters.get(payload.serverId);
     const known = roster?.get(payload.peerId);
-    const name = known?.name ?? payload.partyName ?? `peer-${payload.peerId}`;
+    const party =
+      payload.partyName ??
+      known?.partyName ??
+      this.partyByPeer.get(payload.serverId)?.get(payload.peerId);
+    const name = preferName(
+      known?.name ?? JOINING,
+      known?.name ?? party ?? `peer-${payload.peerId}`,
+    );
+    const display = isPlaceholderName(name)
+      ? party ?? `peer-${payload.peerId}`
+      : name;
     roster?.delete(payload.peerId);
+    this.partyByPeer.get(payload.serverId)?.delete(payload.peerId);
     await this.closeSession(
       payload.serverId,
       payload.peerId,
-      name,
+      display,
       at,
-      payload.partyName ?? known?.name,
+      party,
     );
   }
 
   async closeAllForServer(serverId: string, at = new Date()): Promise<void> {
     this.rosters.delete(serverId);
+    this.partyByPeer.delete(serverId);
     await this.pool.query(
       `UPDATE playtime_sessions
        SET left_at = $2
@@ -184,12 +277,23 @@ export class PlaytimeRegistry {
     };
   }
 
+  private identityForParty(
+    serverId: string,
+    partyName: string | undefined,
+  ): { heroId: string | null; controllerId: string | null } {
+    if (!partyName) return { heroId: null, controllerId: null };
+    const fromSave = this.saveByParty.get(serverId)?.get(partyName);
+    return {
+      heroId: fromSave?.heroId ?? partyNameToHeroId(partyName),
+      controllerId: fromSave?.controllerId || null,
+    };
+  }
+
   private async openSession(
     serverId: string,
-    player: PlayerRosterEntry,
+    player: PlayerRosterEntry & { partyName?: string },
     at: Date,
   ): Promise<void> {
-    // Avoid duplicate open rows for the same peer
     const existing = await this.pool.query<{ id: string }>(
       `SELECT id FROM playtime_sessions
        WHERE server_id = $1 AND peer_id = $2 AND left_at IS NULL
@@ -198,18 +302,63 @@ export class PlaytimeRegistry {
     );
     if (existing.rows[0]) return;
 
+    const partyName =
+      player.partyName ?? this.partyByPeer.get(serverId)?.get(player.id);
+    const { heroId, controllerId } = this.identityForParty(serverId, partyName);
+
     await this.pool.query(
       `INSERT INTO playtime_sessions
-        (id, server_id, peer_id, player_name, party_name, address, joined_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        (id, server_id, peer_id, player_name, party_name, hero_id, controller_id, address, joined_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         randomUUID(),
         serverId,
         player.id,
         player.name,
-        null,
+        partyName ?? null,
+        heroId,
+        controllerId,
         player.addr ?? null,
         at.toISOString(),
+      ],
+    );
+  }
+
+  private async updateOpenSession(
+    serverId: string,
+    peerId: number,
+    patch: {
+      playerName?: string;
+      partyName?: string;
+      address?: string;
+    },
+  ): Promise<void> {
+    const { heroId, controllerId } = this.identityForParty(
+      serverId,
+      patch.partyName,
+    );
+
+    await this.pool.query(
+      `UPDATE playtime_sessions
+       SET player_name = CASE
+             WHEN $4::text IS NOT NULL AND player_name IN ('(joining)', '') THEN $4
+             WHEN $4::text IS NOT NULL AND $4 NOT IN ('(joining)', '') THEN $4
+             ELSE player_name
+           END,
+           party_name = COALESCE($5, party_name),
+           hero_id = COALESCE($6, hero_id),
+           controller_id = COALESCE($7, controller_id),
+           address = COALESCE($8, address)
+       WHERE server_id = $1 AND peer_id = $2 AND left_at IS NULL`,
+      [
+        serverId,
+        peerId,
+        null,
+        patch.playerName ?? null,
+        patch.partyName ?? null,
+        heroId,
+        controllerId,
+        patch.address ?? null,
       ],
     );
   }
@@ -221,18 +370,31 @@ export class PlaytimeRegistry {
     at: Date,
     partyName?: string,
   ): Promise<void> {
+    const { heroId, controllerId } = this.identityForParty(serverId, partyName);
     const result = await this.pool.query(
       `UPDATE playtime_sessions
        SET left_at = $4,
-           party_name = COALESCE(party_name, $5)
+           party_name = COALESCE(party_name, $5),
+           hero_id = COALESCE(hero_id, $6),
+           controller_id = COALESCE(controller_id, $7),
+           player_name = CASE
+             WHEN player_name IN ('(joining)', '') AND $3 NOT IN ('(joining)', '') THEN $3
+             ELSE player_name
+           END
        WHERE server_id = $1
          AND left_at IS NULL
          AND (peer_id = $2 OR (peer_id IS NULL AND player_name = $3))`,
-      [serverId, peerId, playerName, at.toISOString(), partyName ?? null],
+      [
+        serverId,
+        peerId,
+        playerName,
+        at.toISOString(),
+        partyName ?? null,
+        heroId,
+        controllerId,
+      ],
     );
     if ((result.rowCount ?? 0) > 0) return;
-
-    // Disconnect arrived before roster join was persisted — ignore
   }
 }
 
@@ -259,24 +421,65 @@ function summarizePlayers(
 ): PlaytimePlayerSummary[] {
   const map = new Map<
     string,
-    { totalSeconds: number; sessionCount: number; lastSeenAt: string }
+    {
+      playerName: string;
+      partyName: string | null;
+      heroId: string | null;
+      controllerId: string | null;
+      totalSeconds: number;
+      sessionCount: number;
+      lastSeenAt: string;
+    }
   >();
+
   for (const s of sessions) {
     const seconds = overlapSeconds(s.joinedAt, s.leftAt, from, to, now);
     if (seconds <= 0 && s.leftAt) continue;
-    const cur = map.get(s.playerName) ?? {
+
+    const key =
+      s.controllerId ||
+      s.partyName ||
+      (isPlaceholderName(s.playerName) ? s.id : s.playerName);
+
+    const cur = map.get(key) ?? {
+      playerName: s.playerName,
+      partyName: s.partyName,
+      heroId: s.heroId,
+      controllerId: s.controllerId,
       totalSeconds: 0,
       sessionCount: 0,
       lastSeenAt: s.joinedAt,
     };
+
+    if (!isPlaceholderName(s.playerName)) {
+      cur.playerName = s.playerName;
+    } else if (isPlaceholderName(cur.playerName) && s.partyName) {
+      cur.playerName = s.partyName;
+    }
+    if (s.partyName) cur.partyName = s.partyName;
+    if (s.heroId) cur.heroId = s.heroId;
+    if (s.controllerId) cur.controllerId = s.controllerId;
+
     cur.totalSeconds += seconds;
     cur.sessionCount += 1;
     const seen = s.leftAt ?? s.joinedAt;
     if (seen > cur.lastSeenAt) cur.lastSeenAt = seen;
-    map.set(s.playerName, cur);
+    map.set(key, cur);
   }
-  return [...map.entries()]
-    .map(([playerName, v]) => ({ playerName, ...v }))
+
+  return [...map.values()]
+    .filter((p) => !isPlaceholderName(p.playerName) || p.partyName)
+    .map((p) => ({
+      playerName: isPlaceholderName(p.playerName)
+        ? p.partyName ?? p.playerName
+        : p.playerName,
+      partyName: p.partyName,
+      heroId: p.heroId,
+      controllerId: p.controllerId,
+      totalSeconds: p.totalSeconds,
+      sessionCount: p.sessionCount,
+      lastSeenAt: p.lastSeenAt,
+    }))
     .sort((a, b) => b.totalSeconds - a.totalSeconds);
 }
 
@@ -315,7 +518,10 @@ function buildSeries(
         now,
       );
       if (seconds <= 0) continue;
-      byPlayer[s.playerName] = (byPlayer[s.playerName] ?? 0) + seconds;
+      const label = isPlaceholderName(s.playerName)
+        ? s.partyName ?? s.playerName
+        : s.playerName;
+      byPlayer[label] = (byPlayer[label] ?? 0) + seconds;
       totalSeconds += seconds;
     }
     points.push({

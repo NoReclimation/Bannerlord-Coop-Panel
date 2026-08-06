@@ -13,6 +13,8 @@ import { requireAuth, requirePermission } from '../auth/middleware.js';
 import type { PlayerCountStore } from '../services/player-count-store.js';
 import type { BrowserGateway } from '../agent/browser-gateway.js';
 import type { PlaytimeRegistry } from '../services/playtime-registry.js';
+import type { DeleteRequestRegistry } from '../services/delete-request-registry.js';
+import type { AuthedRequest } from '../auth/middleware.js';
 
 const createServerSchema = z.object({
   name: z.string().min(1).max(64),
@@ -38,12 +40,17 @@ export function createServersRouter(deps: {
   playerCounts: PlayerCountStore;
   browserGateway: BrowserGateway;
   playtime: PlaytimeRegistry;
+  deleteRequests: DeleteRequestRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
   const canRead = requirePermission('servers:read');
   const canWrite = requirePermission('servers:write');
+  const canCreate = requirePermission('servers:create');
+  const canDelete = requirePermission('servers:delete');
+  const canDeleteRequest = requirePermission('servers:delete-request');
   const canControl = requirePermission('servers:control');
+  const canKill = requirePermission('servers:kill');
 
   router.get('/servers', auth, canRead, async (req, res, next) => {
     try {
@@ -62,6 +69,23 @@ export function createServersRouter(deps: {
       if (!server) {
         res.status(404).json({ error: 'Server not found' });
         return;
+      }
+      if (deps.gateway.isHostConnected(server.hostId)) {
+        try {
+          const saveRes = await deps.gateway.request(
+            server.hostId,
+            'server.readSavePlayers',
+            { serverId: server.id, saveName: server.saveName },
+          );
+          if (saveRes.ok && saveRes.result) {
+            const result = saveRes.result as {
+              players?: import('@bannerlord-panel/shared').SavePlayerIdentity[];
+            };
+            deps.playtime.setSavePlayers(server.id, result.players ?? []);
+          }
+        } catch {
+          // analytics still works without save.json
+        }
       }
       const range = analyticsRangeSchema.parse(req.query.range ?? '7d');
       const analytics = await deps.playtime.getAnalytics(server.id, range);
@@ -88,7 +112,7 @@ export function createServersRouter(deps: {
     }
   });
 
-  router.post('/servers', auth, canWrite, async (req, res, next) => {
+  router.post('/servers', auth, canCreate, async (req, res, next) => {
     try {
       const body = createServerSchema.parse(req.body);
       const hostId = body.hostId ?? deps.config.DEFAULT_HOST_ID;
@@ -260,30 +284,142 @@ export function createServersRouter(deps: {
   router.post('/servers/:id/restart', auth, canControl, (req, res, next) => {
     void lifecycle(req.params.id, 'server.restart', res, next);
   });
-  router.post('/servers/:id/kill', auth, canControl, (req, res, next) => {
+  router.post('/servers/:id/kill', auth, canKill, (req, res, next) => {
     void lifecycle(req.params.id, 'server.kill', res, next);
   });
 
-  router.delete('/servers/:id', auth, canWrite, async (req, res, next) => {
-    try {
-      const server = await deps.servers.get(req.params.id);
-      if (!server) {
-        res.status(404).json({ error: 'Server not found' });
-        return;
-      }
+  async function deleteServerInstance(serverId: string): Promise<{
+    ok: boolean;
+    status: number;
+    error?: string;
+  }> {
+    const server = await deps.servers.get(serverId);
+    if (!server) return { ok: false, status: 404, error: 'Server not found' };
 
-      if (deps.gateway.isHostConnected(server.hostId)) {
-        const del = await deps.gateway.request(server.hostId, 'server.delete', {
-          serverId: server.id,
-        });
-        if (!del.ok) {
-          res.status(502).json({ error: del.error ?? 'Agent delete failed' });
+    if (deps.gateway.isHostConnected(server.hostId)) {
+      const del = await deps.gateway.request(server.hostId, 'server.delete', {
+        serverId: server.id,
+      });
+      if (!del.ok) {
+        return {
+          ok: false,
+          status: 502,
+          error: del.error ?? 'Agent delete failed',
+        };
+      }
+    }
+
+    await deps.playtime.closeAllForServer(server.id);
+    await deps.servers.delete(server.id);
+    deps.browserGateway.clearPlayerCount(server.id);
+    return { ok: true, status: 204 };
+  }
+
+  router.post(
+    '/servers/:id/delete-request',
+    auth,
+    canDeleteRequest,
+    async (req, res, next) => {
+      try {
+        const me = (req as AuthedRequest).user!;
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
           return;
         }
+        const { created, request } = await deps.deleteRequests.create(
+          server.id,
+          me.id,
+        );
+        res.status(created ? 201 : 200).json({ request });
+      } catch (err) {
+        next(err);
       }
+    },
+  );
 
-      await deps.servers.delete(server.id);
-      deps.browserGateway.clearPlayerCount(server.id);
+  router.get('/delete-requests', auth, canDelete, async (req, res, next) => {
+    try {
+      const status =
+        req.query.status === 'approved' || req.query.status === 'rejected'
+          ? req.query.status
+          : 'pending';
+      const requests = await deps.deleteRequests.list(status);
+      res.json({ requests });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get(
+    '/delete-requests/pending-server-ids',
+    auth,
+    canRead,
+    async (_req, res, next) => {
+      try {
+        const serverIds = await deps.deleteRequests.listPendingServerIds();
+        res.json({ serverIds });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.post(
+    '/delete-requests/:id/approve',
+    auth,
+    canDelete,
+    async (req, res, next) => {
+      try {
+        const me = (req as AuthedRequest).user!;
+        const pending = await deps.deleteRequests.get(req.params.id);
+        if (!pending || pending.status !== 'pending' || !pending.serverId) {
+          res.status(404).json({ error: 'Delete request not found' });
+          return;
+        }
+        const request = await deps.deleteRequests.approve(pending.id, me.id);
+        const result = await deleteServerInstance(pending.serverId);
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error });
+          return;
+        }
+        res.json({ request });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.post(
+    '/delete-requests/:id/reject',
+    auth,
+    canDelete,
+    async (req, res, next) => {
+      try {
+        const me = (req as AuthedRequest).user!;
+        const request = await deps.deleteRequests.reject(
+          req.params.id,
+          me.id,
+          typeof req.body?.note === 'string' ? req.body.note : undefined,
+        );
+        if (!request) {
+          res.status(404).json({ error: 'Delete request not found' });
+          return;
+        }
+        res.json({ request });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.delete('/servers/:id', auth, canDelete, async (req, res, next) => {
+    try {
+      const result = await deleteServerInstance(req.params.id);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
       res.status(204).send();
     } catch (err) {
       next(err);

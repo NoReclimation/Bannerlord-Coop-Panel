@@ -8,6 +8,7 @@ import {
   type ConsoleSubscribePayload,
   type PlayerCountPayload,
   type PlayerLeftPayload,
+  type PlayerPartyPayload,
   type PlayerRosterPayload,
 } from '@bannerlord-panel/shared';
 import type { AgentConfig } from './config.js';
@@ -45,6 +46,10 @@ export class ApiConnection {
 
   emitPlayerLeft(payload: PlayerLeftPayload): void {
     this.socket?.emit(WsEvents.AgentPlayerLeft, payload);
+  }
+
+  emitPlayerParty(payload: PlayerPartyPayload): void {
+    this.socket?.emit(WsEvents.AgentPlayerParty, payload);
   }
 
   connect(): void {

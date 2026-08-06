@@ -71,7 +71,7 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
       <Card>
         <CardHeader
           title="Playtime analytics"
-          description="Sessions from @DS@ player lists and disconnect lines."
+          description="Sessions from @DS@ names, Coop party lines, and save.json Hero/Player ids."
           action={
             <div className="flex flex-wrap gap-1">
               {RANGES.map((r) => (
@@ -162,6 +162,7 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
                 <thead className="text-muted">
                   <tr className="border-b border-border">
                     <th className="py-2 pr-3 font-medium">Player</th>
+                    <th className="py-2 pr-3 font-medium">Party / Hero</th>
                     <th className="py-2 pr-3 font-medium">Playtime</th>
                     <th className="py-2 font-medium">Sessions</th>
                   </tr>
@@ -169,10 +170,16 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
                 <tbody>
                   {data?.players.map((p) => (
                     <tr
-                      key={p.playerName}
+                      key={`${p.playerName}-${p.partyName ?? ''}-${p.controllerId ?? ''}`}
                       className="border-b border-border/60 last:border-0"
                     >
                       <td className="py-2 pr-3 font-medium">{p.playerName}</td>
+                      <td className="py-2 pr-3 text-muted">
+                        {p.partyName ?? '—'}
+                        {p.heroId ? (
+                          <span className="block text-xs">{p.heroId}</span>
+                        ) : null}
+                      </td>
                       <td className="py-2 pr-3">
                         {formatDuration(p.totalSeconds)}
                       </td>
@@ -198,7 +205,14 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
                     className="rounded-lg border border-border/70 px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">{s.playerName}</span>
+                      <span className="font-medium">
+                        {s.playerName}
+                        {s.partyName ? (
+                          <span className="ml-2 text-xs font-normal text-muted">
+                            {s.partyName}
+                          </span>
+                        ) : null}
+                      </span>
                       <span
                         className={cn(
                           'text-xs',

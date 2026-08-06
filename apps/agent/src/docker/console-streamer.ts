@@ -1,11 +1,14 @@
 import type Dockerode from 'dockerode';
 import {
   parseDsEvent,
+  parsePartyCreateVisual,
+  parsePartyRestored,
   parsePlayerDisconnect,
   parsePulsePlayerCount,
   type ConsoleLinePayload,
   type PlayerCountPayload,
   type PlayerLeftPayload,
+  type PlayerPartyPayload,
   type PlayerRosterPayload,
 } from '@bannerlord-panel/shared';
 import { containerNameFor } from './client.js';
@@ -14,6 +17,7 @@ type LineHandler = (payload: ConsoleLinePayload) => void;
 type PlayerCountHandler = (payload: PlayerCountPayload) => void;
 type RosterHandler = (payload: PlayerRosterPayload) => void;
 type PlayerLeftHandler = (payload: PlayerLeftPayload) => void;
+type PlayerPartyHandler = (payload: PlayerPartyPayload) => void;
 
 interface FollowState {
   /** Browser console subscribers — full lines are forwarded when > 0. */
@@ -41,6 +45,7 @@ export class ConsoleStreamer {
     private readonly onPlayerCount: PlayerCountHandler,
     private readonly onRoster: RosterHandler,
     private readonly onPlayerLeft: PlayerLeftHandler,
+    private readonly onPlayerParty: PlayerPartyHandler = () => undefined,
   ) {}
 
   /** Start (or keep) a lightweight log follow used for player counts. */
@@ -321,6 +326,25 @@ export class ConsoleStreamer {
           partyName: left.partyName,
           at: entry.at,
         });
+      }
+
+      const restored = parsePartyRestored(line);
+      if (restored) {
+        this.onPlayerParty({
+          serverId,
+          peerId: restored.peerId,
+          partyName: restored.partyName,
+          at: entry.at,
+        });
+      } else {
+        const created = parsePartyCreateVisual(line);
+        if (created) {
+          this.onPlayerParty({
+            serverId,
+            partyName: created.partyName,
+            at: entry.at,
+          });
+        }
       }
 
       if (fanoutConsole) {

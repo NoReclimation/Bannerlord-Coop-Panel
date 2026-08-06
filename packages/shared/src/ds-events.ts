@@ -86,3 +86,33 @@ export function parsePartyRestored(line: string): {
   if (!match) return null;
   return { partyName: match[1]!, peerId: Number(match[2]) };
 }
+
+/**
+ * `[Coop] CreateNewPartyVisual did not produce a visual for party "Player"`
+ * Also matches successful create lines that mention party "Player####".
+ */
+export function parsePartyCreateVisual(line: string): {
+  partyName: string;
+} | null {
+  const clean = stripAnsi(line);
+  if (!/CreateNewPartyVisual/i.test(clean) && !/party "/i.test(clean)) {
+    return null;
+  }
+  const match = /party "([^"]+)"/i.exec(clean);
+  if (!match) return null;
+  const partyName = match[1]!;
+  if (!/^Player\d*$/i.test(partyName)) return null;
+  return { partyName };
+}
+
+/** Hero_Player2863 → Player2863; Hero_Player → Player */
+export function heroIdToPartyName(heroId: string): string | null {
+  const m = /^Hero_(Player\d*)$/i.exec(heroId.trim());
+  return m ? m[1]! : null;
+}
+
+/** Player2863 → Hero_Player2863 */
+export function partyNameToHeroId(partyName: string): string {
+  if (/^Hero_/i.test(partyName)) return partyName;
+  return `Hero_${partyName}`;
+}

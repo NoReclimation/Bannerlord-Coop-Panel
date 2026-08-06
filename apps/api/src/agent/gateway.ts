@@ -12,6 +12,7 @@ import {
   type ConsoleSubscribePayload,
   type PlayerCountPayload,
   type PlayerLeftPayload,
+  type PlayerPartyPayload,
   type PlayerRosterPayload,
 } from '@bannerlord-panel/shared';
 import { verifyAgentToken } from '../config.js';
@@ -36,6 +37,8 @@ export class AgentGateway {
   private rosterHandler: ((payload: PlayerRosterPayload) => void) | null =
     null;
   private playerLeftHandler: ((payload: PlayerLeftPayload) => void) | null =
+    null;
+  private playerPartyHandler: ((payload: PlayerPartyPayload) => void) | null =
     null;
 
   constructor(
@@ -89,6 +92,10 @@ export class AgentGateway {
 
   onPlayerLeft(handler: (payload: PlayerLeftPayload) => void): void {
     this.playerLeftHandler = handler;
+  }
+
+  onPlayerParty(handler: (payload: PlayerPartyPayload) => void): void {
+    this.playerPartyHandler = handler;
   }
 
   getConnectedHostIds(): string[] {
@@ -248,6 +255,10 @@ export class AgentGateway {
 
     socket.on(WsEvents.AgentPlayerLeft, (payload: PlayerLeftPayload) => {
       this.playerLeftHandler?.(payload);
+    });
+
+    socket.on(WsEvents.AgentPlayerParty, (payload: PlayerPartyPayload) => {
+      this.playerPartyHandler?.(payload);
     });
 
     socket.on(WsEvents.AgentServerState, (payload: unknown) => {

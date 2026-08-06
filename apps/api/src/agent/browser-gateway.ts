@@ -9,6 +9,7 @@ import {
   type ConsoleSubscribePayload,
   type PlayerCountPayload,
   type RestartCountdownPayload,
+  type SavePlayerIdentity,
 } from '@bannerlord-panel/shared';
 import type { ApiConfig } from '../config.js';
 import { verifyAccessToken } from '../auth/tokens.js';
@@ -49,7 +50,21 @@ export class BrowserGateway {
 
     this.agents.onConsoleLine((payload) => this.fanoutConsole(payload));
     this.agents.onPlayerCount((payload) => this.handlePlayerCount(payload));
+    this.agents.onPlayerLeft((payload) => {
+      void this.playtime.applyLeave(payload).then(() => {
+        this.io
+          .of('/client')
+          .to(`server:${payload.serverId}`)
+          .emit(WsEvents.PlayerLeft, payload);
+      });
+    });
+    this.agents.onPlayerParty((payload) => {
+      void this.refreshSavePlayers(payload.serverId).then(() =>
+        this.playtime.applyParty(payload),
+      );
+    });
     this.agents.onPlayerRoster((payload) => {
+      void this.refreshSavePlayers(payload.serverId);
       void this.playtime.applyRoster(payload).then(() => {
         this.io
           .of('/client')
@@ -65,14 +80,6 @@ export class BrowserGateway {
           playerCount: payload.players.length,
           at: payload.at,
         });
-      });
-    });
-    this.agents.onPlayerLeft((payload) => {
-      void this.playtime.applyLeave(payload).then(() => {
-        this.io
-          .of('/client')
-          .to(`server:${payload.serverId}`)
-          .emit(WsEvents.PlayerLeft, payload);
       });
     });
 
@@ -149,6 +156,23 @@ export class BrowserGateway {
       payload,
     );
     this.io.of('/client').to('servers').emit(WsEvents.PlayerCount, payload);
+  }
+
+  private async refreshSavePlayers(serverId: string): Promise<void> {
+    try {
+      const server = await this.servers.get(serverId);
+      if (!server || !this.agents.isHostConnected(server.hostId)) return;
+      const res = await this.agents.request(
+        server.hostId,
+        'server.readSavePlayers',
+        { serverId: server.id, saveName: server.saveName },
+      );
+      if (!res.ok || !res.result) return;
+      const result = res.result as { players?: SavePlayerIdentity[] };
+      this.playtime.setSavePlayers(serverId, result.players ?? []);
+    } catch {
+      // save.json may be missing while the campaign starts
+    }
   }
 
   clearPlayerCount(serverId: string): void {

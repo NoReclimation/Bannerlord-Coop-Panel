@@ -6,6 +6,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { HostsPage } from '@/pages/HostsPage';
 import { InstallationsPage } from '@/pages/InstallationsPage';
 import { ServerPage } from '@/pages/ServerPage';
+import { UsersPage } from '@/pages/UsersPage';
 
 function Protected() {
   const { user, loading } = useAuth();
@@ -30,6 +31,7 @@ export function App() {
             <Route index element={<DashboardPage />} />
             <Route path="installations" element={<InstallationsPage />} />
             <Route path="hosts" element={<HostsPage />} />
+            <Route path="users" element={<UsersPage />} />
             <Route path="servers/:id" element={<ServerPage />} />
           </Route>
         </Route>

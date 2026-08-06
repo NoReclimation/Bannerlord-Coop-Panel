@@ -165,8 +165,16 @@ docker images | grep bannerlord-panel/runtime
 ```bash
 # On VPS — create staging and upload your package
 mkdir -p /var/lib/bannerlord-panel/staging/DedicatedServer
+```
 
-# From your PC (example):
+**From Windows (recommended):** edit `VPS_HOST` / `VPS_USER` at the top of [`scripts/sync-staging.bat`](../scripts/sync-staging.bat), then run it. It uploads the Steam workshop DedicatedServer folder to `/var/lib/bannerlord-panel/staging/DedicatedServer` via OpenSSH `scp` (staging only — still Inspect → Import in the UI).
+
+```bat
+scripts\sync-staging.bat
+```
+
+```bash
+# From your PC (rsync alternative):
 # rsync -av DedicatedServer/ user@vps:/var/lib/bannerlord-panel/staging/DedicatedServer/
 ```
 

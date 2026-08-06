@@ -20,17 +20,22 @@ export type {
   ConsoleSubscribePayload,
   PlayerCountPayload,
   PlayerLeftPayload,
+  PlayerPartyPayload,
   PlayerRosterEntry,
   PlayerRosterPayload,
   RestartCountdownPayload,
+  SavePlayerIdentity,
   WsEventName,
 } from './events.js';
 export { WsEvents } from './events.js';
 export { parsePulsePlayerCount } from './pulse.js';
 export {
+  heroIdToPartyName,
   parseDsEvent,
+  parsePartyCreateVisual,
   parsePartyRestored,
   parsePlayerDisconnect,
+  partyNameToHeroId,
   stripAnsi,
 } from './ds-events.js';
 export type { DsEvent, DsPlayerEntry, DsPlayersEvent } from './ds-events.js';

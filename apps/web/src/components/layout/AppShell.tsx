@@ -5,6 +5,7 @@ import {
   Network,
   Package,
   LogOut,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ const links = [
 ];
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1400px]">
@@ -47,6 +48,20 @@ export function AppShell() {
               {label}
             </NavLink>
           ))}
+          {can('users:manage') ? (
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text',
+                  isActive && 'bg-surface-2 text-text',
+                )
+              }
+            >
+              <Users className="size-4" />
+              Users
+            </NavLink>
+          ) : null}
         </nav>
         <div className="mt-auto border-t border-border px-2 pt-4">
           <p className="truncate text-sm text-text">

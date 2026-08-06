@@ -14,6 +14,7 @@ export type AgentCommandAction =
   | 'server.restoreBackup'
   | 'server.deleteBackup'
   | 'server.readBackup'
+  | 'server.readSavePlayers'
   | 'installation.ensureDirs'
   | 'installation.inspect'
   | 'installation.import'

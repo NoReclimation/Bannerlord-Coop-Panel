@@ -16,11 +16,13 @@ import type {
   ServerLifecyclePayload,
   ServerPutConfigPayload,
 } from '@bannerlord-panel/shared';
+import type { AgentConfig } from '../config.js';
 import type { DockerServerManager } from '../docker/server-manager.js';
 import type { ServerFileManager } from '../fs/server-file-manager.js';
 import type { BackupManager } from '../fs/backup-manager.js';
 import type { InstallationManager } from '../fs/installation-manager.js';
 import type { ConsoleStreamer } from '../docker/console-streamer.js';
+import { readSavePlayers } from '../fs/save-players.js';
 
 interface ConfigLookupPayload extends ServerIdPayload {
   gamePort: number;
@@ -35,6 +37,7 @@ interface FsExtractPayload extends FsPathPayload {
  */
 export class AgentCommandRouter {
   constructor(
+    private readonly config: AgentConfig,
     private readonly docker: DockerServerManager,
     private readonly files: ServerFileManager,
     private readonly backups: BackupManager,
@@ -121,6 +124,17 @@ export class AgentCommandRouter {
         case 'server.readBackup': {
           const payload = request.payload as ServerBackupIdPayload;
           const result = await this.backups.read(payload);
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'server.readSavePlayers': {
+          const payload = request.payload as ServerIdPayload & {
+            saveName?: string;
+          };
+          const result = await readSavePlayers(
+            this.config,
+            payload.serverId,
+            payload.saveName ?? 'saveauto1',
+          );
           return { requestId: request.requestId, ok: true, result };
         }
         case 'installation.ensureDirs': {

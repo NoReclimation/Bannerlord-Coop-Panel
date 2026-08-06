@@ -35,8 +35,12 @@ async function main(): Promise<void> {
     (left) => {
       connectionRef.current?.emitPlayerLeft(left);
     },
+    (party) => {
+      connectionRef.current?.emitPlayerParty(party);
+    },
   );
   const router = new AgentCommandRouter(
+    config,
     manager,
     files,
     backups,

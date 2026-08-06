@@ -19,7 +19,9 @@ export function ServerPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
   const canControl = can('servers:control');
-  const canWrite = can('servers:write');
+  const canDelete = can('servers:delete');
+  const canDeleteRequest = can('servers:delete-request');
+  const canKill = can('servers:kill');
   const [server, setServer] = useState<GameServerRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('console');
@@ -50,20 +52,42 @@ export function ServerPage() {
 
   async function removeServer() {
     if (!server) return;
-    if (
-      !window.confirm(
-        `Remove "${server.name}"? This deletes the container. Saves and backups on disk are kept.`,
-      )
-    ) {
+    if (canDelete) {
+      if (
+        !window.confirm(
+          `Remove "${server.name}"? This deletes the container. Saves and backups on disk are kept.`,
+        )
+      ) {
+        return;
+      }
+      setDeleting(true);
+      try {
+        await api.deleteServer(server.id);
+        navigate('/');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Delete failed');
+        setDeleting(false);
+      }
       return;
     }
-    setDeleting(true);
-    try {
-      await api.deleteServer(server.id);
-      navigate('/');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
-      setDeleting(false);
+    if (canDeleteRequest) {
+      if (
+        !window.confirm(
+          `Request delete for "${server.name}"? An admin must approve before it is removed.`,
+        )
+      ) {
+        return;
+      }
+      setDeleting(true);
+      try {
+        await api.requestServerDelete(server.id);
+        setError(null);
+        setDeleting(false);
+        alert('Delete request submitted — waiting for admin approval.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Request failed');
+        setDeleting(false);
+      }
     }
   }
 
@@ -100,7 +124,7 @@ export function ServerPage() {
             Port {server.gamePort} · Install {server.installationId}
           </p>
         </div>
-        {canControl || canWrite ? (
+        {canControl || canDelete || canDeleteRequest ? (
           <div className="flex flex-wrap gap-2">
             {canControl ? (
               <>
@@ -121,23 +145,29 @@ export function ServerPage() {
                 >
                   Restart
                 </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => void control('kill')}
-                >
-                  Kill
-                </Button>
+                {canKill ? (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => void control('kill')}
+                  >
+                    Kill
+                  </Button>
+                ) : null}
               </>
             ) : null}
-            {canWrite ? (
+            {canDelete || canDeleteRequest ? (
               <Button
                 size="sm"
                 variant="danger"
                 disabled={deleting}
                 onClick={() => void removeServer()}
               >
-                {deleting ? 'Deleting…' : 'Delete'}
+                {deleting
+                  ? '…'
+                  : canDelete
+                    ? 'Delete'
+                    : 'Request delete'}
               </Button>
             ) : null}
           </div>

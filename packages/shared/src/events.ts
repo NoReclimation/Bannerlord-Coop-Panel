@@ -6,6 +6,7 @@ export const WsEvents = {
   AgentPlayerCount: 'agent:player-count',
   AgentPlayerRoster: 'agent:player-roster',
   AgentPlayerLeft: 'agent:player-left',
+  AgentPlayerParty: 'agent:player-party',
   AgentStats: 'agent:stats',
   AgentTaskProgress: 'agent:task-progress',
   AgentServerState: 'agent:server-state',
@@ -85,6 +86,23 @@ export interface PlayerLeftPayload {
   peerId: number;
   partyName?: string;
   at: string;
+}
+
+/** Coop party bound to a peer (Restored party / create visual). */
+export interface PlayerPartyPayload {
+  serverId: string;
+  peerId?: number;
+  partyName: string;
+  at: string;
+}
+
+/** One player row from campaign save.json `Players[]`. */
+export interface SavePlayerIdentity {
+  heroId: string;
+  partyName: string;
+  controllerId: string;
+  /** Display name if present in the save; usually absent (names come from @DS@). */
+  characterName?: string;
 }
 
 export interface AgentHeartbeatPayload {

@@ -82,6 +82,19 @@ export interface LoginResponse {
   permissions: Permission[];
 }
 
+export interface DeleteRequestDto {
+  id: string;
+  serverId: string | null;
+  serverName: string | null;
+  requestedBy: string;
+  requestedByUsername: string | null;
+  status: string;
+  reviewedBy: string | null;
+  note: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
 async function refreshSession(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
@@ -211,6 +224,66 @@ export const api = {
   },
   deleteServer(id: string) {
     return request<void>(`/api/servers/${id}`, { method: 'DELETE' });
+  },
+  requestServerDelete(id: string) {
+    return request<{ request: DeleteRequestDto }>(
+      `/api/servers/${id}/delete-request`,
+      { method: 'POST' },
+    );
+  },
+  listDeleteRequests(status: 'pending' | 'approved' | 'rejected' = 'pending') {
+    const q = new URLSearchParams({ status });
+    return request<{ requests: DeleteRequestDto[] }>(
+      `/api/delete-requests?${q}`,
+    );
+  },
+  listPendingDeleteServerIds() {
+    return request<{ serverIds: string[] }>(
+      '/api/delete-requests/pending-server-ids',
+    );
+  },
+  approveDeleteRequest(id: string) {
+    return request<{ request: DeleteRequestDto }>(
+      `/api/delete-requests/${id}/approve`,
+      { method: 'POST' },
+    );
+  },
+  rejectDeleteRequest(id: string, note?: string) {
+    return request<{ request: DeleteRequestDto }>(
+      `/api/delete-requests/${id}/reject`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    );
+  },
+  listUsers() {
+    return request<{ users: AuthUser[] }>('/api/users');
+  },
+  createUser(input: {
+    username: string;
+    password: string;
+    role: 'admin' | 'moderator' | 'user';
+    displayName?: string;
+  }) {
+    return request<{ user: AuthUser }>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  updateUser(
+    id: string,
+    input: {
+      role?: 'admin' | 'moderator' | 'user';
+      displayName?: string | null;
+      disabled?: boolean;
+      password?: string;
+    },
+  ) {
+    return request<{ user: AuthUser }>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+  deleteUser(id: string) {
+    return request<void>(`/api/users/${id}`, { method: 'DELETE' });
   },
   listFiles(serverId: string, path = '.') {
     const q = new URLSearchParams({ path });

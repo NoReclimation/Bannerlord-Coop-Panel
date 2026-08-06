@@ -12,12 +12,12 @@ import type { RefreshTokenStore } from '../services/refresh-token-store.js';
 const createUserSchema = z.object({
   username: z.string().min(3).max(64),
   password: z.string().min(8).max(128),
-  role: z.enum(['admin', 'moderator', 'viewer']),
+  role: z.enum(['admin', 'moderator', 'user']),
   displayName: z.string().max(128).optional(),
 });
 
 const updateUserSchema = z.object({
-  role: z.enum(['admin', 'moderator', 'viewer']).optional(),
+  role: z.enum(['admin', 'moderator', 'user']).optional(),
   displayName: z.string().max(128).nullable().optional(),
   disabled: z.boolean().optional(),
   password: z.string().min(8).max(128).optional(),

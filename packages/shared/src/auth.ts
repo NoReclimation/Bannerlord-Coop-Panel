@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'moderator' | 'viewer';
+export type UserRole = 'admin' | 'moderator' | 'user';
 
 export interface AuthUser {
   id: string;
@@ -13,7 +13,11 @@ export interface AuthUser {
 export type Permission =
   | 'servers:read'
   | 'servers:write'
+  | 'servers:create'
+  | 'servers:delete'
+  | 'servers:delete-request'
   | 'servers:control'
+  | 'servers:kill'
   | 'installations:read'
   | 'installations:write'
   | 'hosts:read'
@@ -28,7 +32,11 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   admin: [
     'servers:read',
     'servers:write',
+    'servers:create',
+    'servers:delete',
+    'servers:delete-request',
     'servers:control',
+    'servers:kill',
     'installations:read',
     'installations:write',
     'hosts:read',
@@ -41,6 +49,9 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   moderator: [
     'servers:read',
+    'servers:write',
+    'servers:create',
+    'servers:delete-request',
     'servers:control',
     'installations:read',
     'hosts:read',
@@ -48,8 +59,9 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'console:read',
     'console:write',
   ],
-  viewer: [
+  user: [
     'servers:read',
+    'servers:control',
     'installations:read',
     'hosts:read',
     'settings:read',
