@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { io } from 'socket.io-client';
 import {
   WsEvents,
   type GameServerRecord,
   type PlayerCountPayload,
 } from '@bannerlord-panel/shared';
 import { api, getAccessToken } from '@/lib/api';
+import { acquireClientSocket, releaseClientSocket } from '@/lib/client-socket';
 import { ServerCard } from '@/components/servers/ServerCard';
 import { CreateServerPanel } from '@/components/servers/CreateServerPanel';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ interface DeleteRequestRow {
 
 export function DashboardPage() {
   const { can } = useAuth();
-  const canCreate = can('servers:create') && can('installations:read');
+  const canCreate = can('servers:create');
   const canDelete = can('servers:delete');
   const canDeleteRequest = can('servers:delete-request');
   const canStopAll = can('servers:stop-all');
@@ -67,14 +67,9 @@ export function DashboardPage() {
     const token = getAccessToken();
     if (!token) return;
 
-    const socket = io('/client', {
-      path: '/client-socket',
-      transports: ['websocket', 'polling'],
-      auth: { token },
-      reconnection: true,
-    });
+    const socket = acquireClientSocket(token);
 
-    socket.on(WsEvents.PlayerCount, (payload: PlayerCountPayload) => {
+    const onPlayerCount = (payload: PlayerCountPayload) => {
       setServers((prev) =>
         prev.map((s) =>
           s.id === payload.serverId
@@ -82,10 +77,13 @@ export function DashboardPage() {
             : s,
         ),
       );
-    });
+    };
+
+    socket.on(WsEvents.PlayerCount, onPlayerCount);
 
     return () => {
-      socket.disconnect();
+      socket.off(WsEvents.PlayerCount, onPlayerCount);
+      releaseClientSocket();
     };
   }, []);
 
@@ -129,14 +127,16 @@ export function DashboardPage() {
     }
   }
 
-  async function onDeleteSelected() {
-    if (selectedServers.length === 0) return;
-    const names = selectedServers.map((s) => s.name).join(', ');
+  async function deleteServers(targets: GameServerRecord[]) {
+    if (targets.length === 0) return;
+    const names = targets.map((s) => s.name).join(', ');
 
     if (canDelete) {
       if (
         !window.confirm(
-          `Delete ${selectedServers.length} server(s)?\n${names}\n\nContainers are removed; saves/backups on disk are kept.`,
+          targets.length === 1
+            ? `Delete "${targets[0].name}"?\n\nContainer is removed; saves/backups on disk are kept.`
+            : `Delete ${targets.length} server(s)?\n${names}\n\nContainers are removed; saves/backups on disk are kept.`,
         )
       ) {
         return;
@@ -144,11 +144,19 @@ export function DashboardPage() {
       setBusy(true);
       setError(null);
       try {
-        for (const s of selectedServers) {
+        for (const s of targets) {
           await api.deleteServer(s.id);
         }
-        setSelected(new Set());
-        setStatus(`Deleted ${selectedServers.length} server(s).`);
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const s of targets) next.delete(s.id);
+          return next;
+        });
+        setStatus(
+          targets.length === 1
+            ? `Deleted "${targets[0].name}".`
+            : `Deleted ${targets.length} server(s).`,
+        );
         await load();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Delete failed');
@@ -161,7 +169,9 @@ export function DashboardPage() {
     if (canDeleteRequest) {
       if (
         !window.confirm(
-          `Request delete for ${selectedServers.length} server(s)?\n${names}\n\nAn admin must approve before they are removed.`,
+          targets.length === 1
+            ? `Request delete for "${targets[0].name}"?\n\nAn admin must approve before it is removed.`
+            : `Request delete for ${targets.length} server(s)?\n${names}\n\nAn admin must approve before they are removed.`,
         )
       ) {
         return;
@@ -169,10 +179,14 @@ export function DashboardPage() {
       setBusy(true);
       setError(null);
       try {
-        for (const s of selectedServers) {
+        for (const s of targets) {
           await api.requestServerDelete(s.id);
         }
-        setSelected(new Set());
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const s of targets) next.delete(s.id);
+          return next;
+        });
         setStatus('Delete request submitted — waiting for admin approval.');
         await load();
       } catch (err) {
@@ -181,6 +195,16 @@ export function DashboardPage() {
         setBusy(false);
       }
     }
+  }
+
+  async function onDeleteSelected() {
+    await deleteServers(selectedServers);
+  }
+
+  async function onDeleteOne(id: string) {
+    const target = servers.find((s) => s.id === id);
+    if (!target) return;
+    await deleteServers([target]);
   }
 
   async function approveRequest(id: string) {
@@ -226,10 +250,15 @@ export function DashboardPage() {
           <Button variant="secondary" onClick={() => void load()} disabled={busy}>
             Refresh
           </Button>
-          {canStopAll && hasRunnable ? (
+          {canStopAll ? (
             <Button
               variant="secondary"
-              disabled={busy}
+              disabled={busy || !hasRunnable}
+              title={
+                hasRunnable
+                  ? 'Stop all running servers'
+                  : 'No running servers to stop'
+              }
               onClick={() => void onStopAll()}
             >
               Stop all
@@ -335,6 +364,9 @@ export function DashboardPage() {
               key={server.id}
               server={server}
               onControl={(id, action) => void onControl(id, action)}
+              onDelete={
+                canSelect ? (id) => void onDeleteOne(id) : undefined
+              }
               showSelect={canSelect}
               selected={selected.has(server.id)}
               deletePending={pendingIds.has(server.id)}

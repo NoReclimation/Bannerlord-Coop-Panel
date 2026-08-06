@@ -7,6 +7,7 @@ import express, {
 import cors from 'cors';
 import type { Pool } from 'pg';
 import type { ApiConfig } from './config.js';
+import { parseCorsOrigins } from './config.js';
 import type { HostRegistry } from './services/host-registry.js';
 import type { InstallationRegistry } from './services/installation-registry.js';
 import type { PortAllocator } from './services/port-allocator.js';
@@ -56,7 +57,7 @@ export interface AppDeps {
 
 export function createApp(deps: AppDeps): Express {
   const app = express();
-  app.use(cors({ origin: deps.config.CORS_ORIGIN }));
+  app.use(cors({ origin: parseCorsOrigins(deps.config.CORS_ORIGIN) }));
   app.use(express.json({ limit: '45mb' }));
 
   // Public

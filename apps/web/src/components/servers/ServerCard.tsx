@@ -15,6 +15,7 @@ function statusTone(status: string): 'success' | 'danger' | 'muted' | 'accent' {
 export function ServerCard({
   server,
   onControl,
+  onDelete,
   selected,
   onSelectedChange,
   deletePending,
@@ -22,6 +23,7 @@ export function ServerCard({
 }: {
   server: GameServerRecord;
   onControl: (id: string, action: 'start' | 'stop' | 'restart' | 'kill') => void;
+  onDelete?: (id: string) => void;
   selected?: boolean;
   onSelectedChange?: (id: string, selected: boolean) => void;
   deletePending?: boolean;
@@ -30,6 +32,10 @@ export function ServerCard({
   const { can } = useAuth();
   const canControl = can('servers:control');
   const canKill = can('servers:kill');
+  const canDelete = can('servers:delete');
+  const canDeleteRequest = can('servers:delete-request');
+  const showDelete = !!onDelete && (canDelete || canDeleteRequest);
+  const showActions = canControl || showDelete;
 
   return (
     <Card className="flex flex-col p-4">
@@ -38,7 +44,7 @@ export function ServerCard({
           {showSelect && onSelectedChange ? (
             <input
               type="checkbox"
-              className="mt-1.5 size-4 accent-[var(--accent)]"
+              className="mt-1.5 size-4 shrink-0 rounded border border-border bg-surface-2 accent-[var(--accent)]"
               checked={!!selected}
               onChange={(e) => onSelectedChange(server.id, e.target.checked)}
               aria-label={`Select ${server.name}`}
@@ -89,32 +95,45 @@ export function ServerCard({
         </div>
       </dl>
 
-      {canControl ? (
+      {showActions ? (
         <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-          <Button size="sm" onClick={() => onControl(server.id, 'start')}>
-            Start
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onControl(server.id, 'stop')}
-          >
-            Stop
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onControl(server.id, 'restart')}
-          >
-            Restart
-          </Button>
-          {canKill ? (
+          {canControl ? (
+            <>
+              <Button size="sm" onClick={() => onControl(server.id, 'start')}>
+                Start
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onControl(server.id, 'stop')}
+              >
+                Stop
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onControl(server.id, 'restart')}
+              >
+                Restart
+              </Button>
+              {canKill ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => onControl(server.id, 'kill')}
+                >
+                  Kill
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+          {showDelete ? (
             <Button
               size="sm"
               variant="danger"
-              onClick={() => onControl(server.id, 'kill')}
+              onClick={() => onDelete(server.id)}
             >
-              Kill
+              {canDelete ? 'Delete' : 'Request delete'}
             </Button>
           ) : null}
         </div>

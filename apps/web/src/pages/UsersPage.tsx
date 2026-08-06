@@ -30,11 +30,7 @@ export function UsersPage() {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editDisabled, setEditDisabled] = useState(false);
-
-  const [assignUserId, setAssignUserId] = useState<string | null>(null);
-  const [assignedServerIds, setAssignedServerIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [editServerIds, setEditServerIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -87,29 +83,59 @@ export function UsersPage() {
     }
   }
 
-  function startEdit(u: AuthUser) {
+  async function startEdit(u: AuthUser) {
     setEditId(u.id);
     setEditRole(u.role);
     setEditDisplayName(u.displayName ?? '');
     setEditPassword('');
     setEditDisabled(u.disabled);
+    setEditServerIds(new Set());
+
+    if (!canAssign || u.role !== 'user') return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await api.listUserServers(u.id);
+      setEditServerIds(new Set(data.serverIds));
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to load server access',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleEditServer(serverId: string) {
+    setEditServerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(serverId)) next.delete(serverId);
+      else next.add(serverId);
+      return next;
+    });
   }
 
   async function onSaveEdit(e: FormEvent) {
     e.preventDefault();
-    if (!editId || !canManage) return;
+    if (!editId || (!canManage && !canAssign)) return;
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
-      await api.updateUser(editId, {
-        role: editRole,
-        displayName: editDisplayName.trim() || null,
-        disabled: editDisabled,
-        ...(editPassword ? { password: editPassword } : {}),
-      });
+      if (canManage) {
+        await api.updateUser(editId, {
+          role: editRole,
+          displayName: editDisplayName.trim() || null,
+          disabled: editDisabled,
+          ...(editPassword ? { password: editPassword } : {}),
+        });
+      }
+      if (canAssign && editRole === 'user') {
+        await api.setUserServers(editId, [...editServerIds]);
+      }
       setEditId(null);
-      setStatus('User updated.');
+      setStatus(canManage ? 'User updated.' : 'Server assignments saved.');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
@@ -127,7 +153,6 @@ export function UsersPage() {
       await api.deleteUser(u.id);
       setStatus(`Deleted ${u.username}.`);
       if (editId === u.id) setEditId(null);
-      if (assignUserId === u.id) setAssignUserId(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
@@ -136,48 +161,9 @@ export function UsersPage() {
     }
   }
 
-  async function startAssign(u: AuthUser) {
-    if (!canAssign || u.role !== 'user') return;
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await api.listUserServers(u.id);
-      setAssignUserId(u.id);
-      setAssignedServerIds(new Set(data.serverIds));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load assignments');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function toggleServer(serverId: string) {
-    setAssignedServerIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(serverId)) next.delete(serverId);
-      else next.add(serverId);
-      return next;
-    });
-  }
-
-  async function onSaveAssignments(e: FormEvent) {
-    e.preventDefault();
-    if (!assignUserId || !canAssign) return;
-    setBusy(true);
-    setError(null);
-    setStatus(null);
-    try {
-      await api.setUserServers(assignUserId, [...assignedServerIds]);
-      setStatus('Server assignments saved.');
-      setAssignUserId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save assignments');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const assignUser = users.find((u) => u.id === assignUserId) ?? null;
+  const editUser = users.find((u) => u.id === editId) ?? null;
+  const showServerAccess =
+    canAssign && editId != null && editRole === 'user';
 
   return (
     <div className="space-y-6">
@@ -283,23 +269,23 @@ export function UsersPage() {
                   </td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-2">
-                      {canAssign && u.role === 'user' ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled={busy}
-                          onClick={() => void startAssign(u)}
-                        >
-                          Servers
-                        </Button>
-                      ) : null}
                       {canManage ? (
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => startEdit(u)}
+                          disabled={busy}
+                          onClick={() => void startEdit(u)}
                         >
                           Edit
+                        </Button>
+                      ) : canAssign && u.role === 'user' ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() => void startEdit(u)}
+                        >
+                          Assign servers
                         </Button>
                       ) : null}
                       {canManage && u.id !== me?.id ? (
@@ -321,56 +307,105 @@ export function UsersPage() {
         </div>
       </Card>
 
-      {canManage && editId ? (
+      {editId && (canManage || showServerAccess) ? (
         <Card>
-          <CardHeader title="Edit user" />
+          <CardHeader
+            title={
+              canManage
+                ? `Edit user${editUser ? ` — ${editUser.username}` : ''}`
+                : `Assign servers — ${editUser?.username ?? ''}`
+            }
+            description={
+              showServerAccess
+                ? 'Only checked servers appear on this user\'s dashboard.'
+                : undefined
+            }
+          />
           <form
             onSubmit={(e) => void onSaveEdit(e)}
             className="grid gap-3 px-4 pb-4 sm:grid-cols-2"
           >
-            <div>
-              <Label htmlFor="edit-role">Role</Label>
-              <select
-                id="edit-role"
-                className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-                value={editRole}
-                onChange={(e) => setEditRole(e.target.value as UserRole)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="edit-display">Display name</Label>
-              <Input
-                id="edit-display"
-                value={editDisplayName}
-                onChange={(e) => setEditDisplayName(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-password">New password (optional)</Label>
-              <Input
-                id="edit-password"
-                type="password"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-                minLength={8}
-              />
-            </div>
-            <div className="flex items-end gap-2 pb-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={editDisabled}
-                  onChange={(e) => setEditDisabled(e.target.checked)}
-                />
-                Disabled
-              </label>
-            </div>
+            {canManage ? (
+              <>
+                <div>
+                  <Label htmlFor="edit-role">Role</Label>
+                  <select
+                    id="edit-role"
+                    className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as UserRole)}
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-display">Display name</Label>
+                  <Input
+                    id="edit-display"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-password">New password (optional)</Label>
+                  <Input
+                    id="edit-password"
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    minLength={8}
+                  />
+                </div>
+                <div className="flex items-end gap-2 pb-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={editDisabled}
+                      onChange={(e) => setEditDisabled(e.target.checked)}
+                    />
+                    Disabled
+                  </label>
+                </div>
+              </>
+            ) : null}
+
+            {showServerAccess ? (
+              <div className="sm:col-span-2 space-y-2 border-t border-border pt-3">
+                <Label>Server access</Label>
+                {servers.length === 0 ? (
+                  <p className="text-sm text-muted">No servers available.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {servers.map((s) => (
+                      <li key={s.id}>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={editServerIds.has(s.id)}
+                            onChange={() => toggleEditServer(s.id)}
+                          />
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-muted">
+                            UDP {s.gamePort} · {s.saveName}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : canManage && editRole !== 'user' ? (
+              <p className="sm:col-span-2 text-sm text-muted border-t border-border pt-3">
+                Admins and moderators can access every server. Switch the role
+                to <span className="font-medium text-fg">user</span> to assign
+                specific servers.
+              </p>
+            ) : null}
+
             <div className="flex gap-2 sm:col-span-2">
               <Button type="submit" disabled={busy}>
                 Save
@@ -379,53 +414,6 @@ export function UsersPage() {
                 type="button"
                 variant="secondary"
                 onClick={() => setEditId(null)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Card>
-      ) : null}
-
-      {canAssign && assignUser ? (
-        <Card>
-          <CardHeader
-            title={`Assign servers — ${assignUser.username}`}
-            description="Only these servers appear on this user's dashboard."
-          />
-          <form
-            onSubmit={(e) => void onSaveAssignments(e)}
-            className="space-y-3 px-4 pb-4"
-          >
-            {servers.length === 0 ? (
-              <p className="text-sm text-muted">No servers available.</p>
-            ) : (
-              <ul className="space-y-2">
-                {servers.map((s) => (
-                  <li key={s.id}>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={assignedServerIds.has(s.id)}
-                        onChange={() => toggleServer(s.id)}
-                      />
-                      <span className="font-medium">{s.name}</span>
-                      <span className="text-muted">
-                        UDP {s.gamePort} · {s.saveName}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="flex gap-2">
-              <Button type="submit" disabled={busy}>
-                Save assignments
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setAssignUserId(null)}
               >
                 Cancel
               </Button>

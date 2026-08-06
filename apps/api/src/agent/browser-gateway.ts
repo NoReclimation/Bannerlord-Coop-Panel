@@ -44,7 +44,7 @@ export class BrowserGateway {
     private readonly agents: AgentGateway,
     private readonly playerCounts: PlayerCountStore,
     private readonly playtime: PlaytimeRegistry,
-    corsOrigin: string,
+    corsOrigin: string | string[],
   ) {
     this.io = new SocketServer(httpServer, {
       path: '/client-socket',

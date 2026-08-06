@@ -44,7 +44,7 @@ export class AgentGateway {
   constructor(
     httpServer: HttpServer,
     private readonly hosts: HostRegistry,
-    corsOrigin: string,
+    corsOrigin: string | string[],
   ) {
     this.io = new SocketServer(httpServer, {
       path: '/agent-socket',

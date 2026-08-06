@@ -109,7 +109,7 @@ nano .env   # or vim
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Long random strings |
 | `ADMIN_PASSWORD` | Not `changeme123` |
 | `DEFAULT_AGENT_TOKEN` / `AGENT_TOKEN` | Same value in both; long random string |
-| `CORS_ORIGIN` | Your real web origin, e.g. `https://panel.example.com` |
+| `CORS_ORIGIN` | Your real web origin(s), comma-separated — e.g. `https://panel.example.com` or `http://localhost:5173,https://panel.example.com` |
 | `DEFAULT_HOST_DATA_ROOT` / `AGENT_DATA_ROOT` | Keep `/var/lib/bannerlord-panel` unless you chose another path |
 | `DATABASE_URL` | Match Compose Postgres (default below is fine for single-host) |
 

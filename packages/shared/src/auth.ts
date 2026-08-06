@@ -59,6 +59,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'servers:control',
     'servers:stop-all',
     'servers:assign',
+    'installations:read',
     'settings:read',
     'console:read',
     'console:write',

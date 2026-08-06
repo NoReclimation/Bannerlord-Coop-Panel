@@ -13,6 +13,7 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default('postgres://bannerlord:bannerlord@127.0.0.1:5432/bannerlord_panel'),
+  /** Comma-separated list of allowed browser origins (REST + Socket.IO). */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DEFAULT_HOST_ID: z
     .string()
@@ -33,6 +34,16 @@ export type ApiConfig = z.infer<typeof envSchema>;
 
 export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return envSchema.parse(env);
+}
+
+/** Parse `CORS_ORIGIN` into a value accepted by `cors` / Socket.IO. */
+export function parseCorsOrigins(value: string): string | string[] {
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return value;
+  return parts.length === 1 ? parts[0]! : parts;
 }
 
 export function hashAgentToken(token: string): string {

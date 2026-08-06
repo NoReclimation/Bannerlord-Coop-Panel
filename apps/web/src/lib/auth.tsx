@@ -81,9 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const can = useCallback(
-    (permission: Permission) =>
-      user ? hasPermission(user.role, permission) : false,
-    [user],
+    (permission: Permission) => {
+      if (!user) return false;
+      // Role matrix is source of truth; also honor server-issued list if present.
+      return (
+        hasPermission(user.role, permission) || permissions.includes(permission)
+      );
+    },
+    [user, permissions],
   );
 
   const value = useMemo(

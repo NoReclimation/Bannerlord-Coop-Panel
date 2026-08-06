@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { io, type Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import Anser from 'anser';
 import {
   WsEvents,
@@ -8,6 +8,7 @@ import {
   type PlayerCountPayload,
 } from '@bannerlord-panel/shared';
 import { getAccessToken } from '@/lib/api';
+import { acquireClientSocket, releaseClientSocket } from '@/lib/client-socket';
 import { parsePulsePlayerCount } from '@/lib/pulse';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -109,50 +110,60 @@ export function ServerConsole({ serverId }: { serverId: string }) {
     }
 
     setPlayerCount(null);
-    const socket = io('/client', {
-      path: '/client-socket',
-      transports: ['websocket', 'polling'],
-      auth: { token },
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-    });
+    const socket = acquireClientSocket(token);
     socketRef.current = socket;
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       setConnected(true);
       setStatus('Connected — subscribing…');
       socket.emit(WsEvents.ConsoleSubscribe, { serverId });
-    });
+    };
 
-    socket.on('disconnect', () => {
+    const onDisconnect = () => {
       setConnected(false);
       setStatus('Disconnected — reconnecting…');
-    });
+    };
 
-    socket.on('connect_error', (err) => {
+    const onConnectError = (err: Error) => {
       setStatus(`Connection error: ${err.message}`);
-    });
+    };
 
-    socket.on(WsEvents.ConsoleLine, (payload: ConsoleLinePayload) => {
+    const onConsoleLine = (payload: ConsoleLinePayload) => {
       if (payload.serverId !== serverId) return;
       appendLine(payload);
-    });
+    };
 
-    socket.on(WsEvents.PlayerCount, (payload: PlayerCountPayload) => {
+    const onPlayerCount = (payload: PlayerCountPayload) => {
       if (payload.serverId !== serverId) return;
       setPlayerCount(payload.playerCount);
-    });
+    };
 
-    socket.on(WsEvents.ConsoleStatus, (payload: ConsoleStatusPayload) => {
+    const onConsoleStatus = (payload: ConsoleStatusPayload) => {
       if (payload.serverId !== serverId) return;
       setStatus(payload.message ?? (payload.streaming ? 'Live' : 'Idle'));
-    });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
+    socket.on(WsEvents.ConsoleLine, onConsoleLine);
+    socket.on(WsEvents.PlayerCount, onPlayerCount);
+    socket.on(WsEvents.ConsoleStatus, onConsoleStatus);
+
+    if (socket.connected) {
+      onConnect();
+    }
 
     return () => {
       socket.emit(WsEvents.ConsoleUnsubscribe, { serverId });
-      socket.disconnect();
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
+      socket.off(WsEvents.ConsoleLine, onConsoleLine);
+      socket.off(WsEvents.PlayerCount, onPlayerCount);
+      socket.off(WsEvents.ConsoleStatus, onConsoleStatus);
       socketRef.current = null;
+      releaseClientSocket();
     };
   }, [serverId, appendLine]);
 

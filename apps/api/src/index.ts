@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadApiConfig } from './config.js';
+import { loadApiConfig, parseCorsOrigins } from './config.js';
 import { createPool } from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
 import { HostRegistry } from './services/host-registry.js';
@@ -56,7 +56,8 @@ async function main(): Promise<void> {
   console.log(`[api] admin user ready: ${admin.username} (${admin.role})`);
 
   const httpServer = createServer();
-  const gateway = new AgentGateway(httpServer, hosts, config.CORS_ORIGIN);
+  const corsOrigin = parseCorsOrigins(config.CORS_ORIGIN);
+  const gateway = new AgentGateway(httpServer, hosts, corsOrigin);
   const browserGateway = new BrowserGateway(
     httpServer,
     config,
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
     gateway,
     playerCounts,
     playtime,
-    config.CORS_ORIGIN,
+    corsOrigin,
   );
 
   const schedules = new ScheduleRegistry(pool);

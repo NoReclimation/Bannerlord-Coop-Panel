@@ -85,16 +85,19 @@ server {
   }
 
   location /client-socket/ {
+    # Prefer proxying sockets straight to the API (even if the UI is Vite :5173)
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header Origin $http_origin;
+    proxy_read_timeout 86400;
   }
 }
 ```
 
-Set `.env` `CORS_ORIGIN` to your panel URL.
+Set `.env` `CORS_ORIGIN` to your panel URL (comma-separated if you also use localhost), e.g. `https://bannerlord-panel.reclaimed-servers.com` or `http://localhost:5173,https://bannerlord-panel.reclaimed-servers.com`.
 
 ---
 
