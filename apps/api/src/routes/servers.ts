@@ -14,7 +14,10 @@ import type { PlayerCountStore } from '../services/player-count-store.js';
 import type { BrowserGateway } from '../agent/browser-gateway.js';
 import type { PlaytimeRegistry } from '../services/playtime-registry.js';
 import type { DeleteRequestRegistry } from '../services/delete-request-registry.js';
+import type { UserServerRegistry } from '../services/user-server-registry.js';
 import type { AuthedRequest } from '../auth/middleware.js';
+import { requireAssignedServerAccess } from '../auth/server-access.js';
+import { seesAllServers } from '@bannerlord-panel/shared';
 
 const createServerSchema = z.object({
   name: z.string().min(1).max(64),
@@ -41,6 +44,7 @@ export function createServersRouter(deps: {
   browserGateway: BrowserGateway;
   playtime: PlaytimeRegistry;
   deleteRequests: DeleteRequestRegistry;
+  userServers: UserServerRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
@@ -51,19 +55,86 @@ export function createServersRouter(deps: {
   const canDeleteRequest = requirePermission('servers:delete-request');
   const canControl = requirePermission('servers:control');
   const canKill = requirePermission('servers:kill');
+  const canAssign = requirePermission('servers:assign');
+  const serverAccess = requireAssignedServerAccess(deps.userServers);
 
   router.get('/servers', auth, canRead, async (req, res, next) => {
     try {
+      const me = (req as AuthedRequest).user!;
       const hostId =
         typeof req.query.hostId === 'string' ? req.query.hostId : undefined;
-      const list = await deps.servers.list(hostId);
+      const list = seesAllServers(me.role)
+        ? await deps.servers.list(hostId)
+        : await deps.userServers.listServersForUser(me.id, hostId);
       res.json({ servers: deps.playerCounts.attachAll(list) });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/servers/:id/analytics', auth, canRead, async (req, res, next) => {
+  router.get(
+    '/servers/:id/assignees',
+    auth,
+    canAssign,
+    async (req, res, next) => {
+      try {
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        const userIds = await deps.userServers.listUserIdsForServer(server.id);
+        res.json({ serverId: server.id, userIds });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.put(
+    '/servers/:id/assignees',
+    auth,
+    canAssign,
+    async (req, res, next) => {
+      try {
+        const me = (req as AuthedRequest).user!;
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        const body = z
+          .object({ userIds: z.array(z.string().uuid()) })
+          .parse(req.body);
+        const allowed: string[] = [];
+        for (const userId of [...new Set(body.userIds)]) {
+          const user = await deps.users.get(userId);
+          if (user && user.role === 'user' && !user.disabled) {
+            allowed.push(userId);
+          }
+        }
+        const userIds = await deps.userServers.setUsersForServer(
+          server.id,
+          allowed,
+          me.id,
+        );
+        res.json({ serverId: server.id, userIds });
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          res.status(400).json({ error: err.flatten() });
+          return;
+        }
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/servers/:id/analytics',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
     try {
       const server = await deps.servers.get(req.params.id);
       if (!server) {
@@ -97,9 +168,15 @@ export function createServersRouter(deps: {
       }
       next(err);
     }
-  });
+  },
+  );
 
-  router.get('/servers/:id', auth, canRead, async (req, res, next) => {
+  router.get(
+    '/servers/:id',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
     try {
       const server = await deps.servers.get(req.params.id);
       if (!server) {
@@ -110,7 +187,8 @@ export function createServersRouter(deps: {
     } catch (err) {
       next(err);
     }
-  });
+  },
+  );
 
   router.post('/servers', auth, canCreate, async (req, res, next) => {
     try {
@@ -275,18 +353,42 @@ export function createServersRouter(deps: {
     }
   }
 
-  router.post('/servers/:id/start', auth, canControl, (req, res, next) => {
-    void lifecycle(req.params.id, 'server.start', res, next);
-  });
-  router.post('/servers/:id/stop', auth, canControl, (req, res, next) => {
-    void lifecycle(req.params.id, 'server.stop', res, next);
-  });
-  router.post('/servers/:id/restart', auth, canControl, (req, res, next) => {
-    void lifecycle(req.params.id, 'server.restart', res, next);
-  });
-  router.post('/servers/:id/kill', auth, canKill, (req, res, next) => {
-    void lifecycle(req.params.id, 'server.kill', res, next);
-  });
+  router.post(
+    '/servers/:id/start',
+    auth,
+    canControl,
+    serverAccess,
+    (req, res, next) => {
+      void lifecycle(req.params.id, 'server.start', res, next);
+    },
+  );
+  router.post(
+    '/servers/:id/stop',
+    auth,
+    canControl,
+    serverAccess,
+    (req, res, next) => {
+      void lifecycle(req.params.id, 'server.stop', res, next);
+    },
+  );
+  router.post(
+    '/servers/:id/restart',
+    auth,
+    canControl,
+    serverAccess,
+    (req, res, next) => {
+      void lifecycle(req.params.id, 'server.restart', res, next);
+    },
+  );
+  router.post(
+    '/servers/:id/kill',
+    auth,
+    canKill,
+    serverAccess,
+    (req, res, next) => {
+      void lifecycle(req.params.id, 'server.kill', res, next);
+    },
+  );
 
   async function deleteServerInstance(serverId: string): Promise<{
     ok: boolean;
@@ -319,6 +421,7 @@ export function createServersRouter(deps: {
     '/servers/:id/delete-request',
     auth,
     canDeleteRequest,
+    serverAccess,
     async (req, res, next) => {
       try {
         const me = (req as AuthedRequest).user!;
@@ -413,18 +516,24 @@ export function createServersRouter(deps: {
     },
   );
 
-  router.delete('/servers/:id', auth, canDelete, async (req, res, next) => {
-    try {
-      const result = await deleteServerInstance(req.params.id);
-      if (!result.ok) {
-        res.status(result.status).json({ error: result.error });
-        return;
+  router.delete(
+    '/servers/:id',
+    auth,
+    canDelete,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const result = await deleteServerInstance(req.params.id);
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error });
+          return;
+        }
+        res.status(204).send();
+      } catch (err) {
+        next(err);
       }
-      res.status(204).send();
-    } catch (err) {
-      next(err);
-    }
-  });
+    },
+  );
 
   const configSchema = z.object({
     process: z.object({
@@ -439,70 +548,89 @@ export function createServersRouter(deps: {
     }),
   });
 
-  router.get('/servers/:id/config', auth, canRead, async (req, res, next) => {
-    try {
-      const server = await deps.servers.get(req.params.id);
-      if (!server) {
-        res.status(404).json({ error: 'Server not found' });
-        return;
+  router.get(
+    '/servers/:id/config',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(server.hostId)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
+        const response = await deps.gateway.request(
+          server.hostId,
+          'server.getConfig',
+          { serverId: server.id, gamePort: server.gamePort },
+        );
+        if (!response.ok) {
+          res
+            .status(502)
+            .json({ error: response.error ?? 'Failed to load config' });
+          return;
+        }
+        res.json({ config: response.result });
+      } catch (err) {
+        next(err);
       }
-      if (!deps.gateway.isHostConnected(server.hostId)) {
-        res.status(503).json({ error: 'Host agent is offline' });
-        return;
-      }
-      const response = await deps.gateway.request(
-        server.hostId,
-        'server.getConfig',
-        { serverId: server.id, gamePort: server.gamePort },
-      );
-      if (!response.ok) {
-        res.status(502).json({ error: response.error ?? 'Failed to load config' });
-        return;
-      }
-      res.json({ config: response.result });
-    } catch (err) {
-      next(err);
-    }
-  });
+    },
+  );
 
-  router.put('/servers/:id/config', auth, canWrite, async (req, res, next) => {
-    try {
-      const body = configSchema.parse(req.body);
-      const server = await deps.servers.get(req.params.id);
-      if (!server) {
-        res.status(404).json({ error: 'Server not found' });
-        return;
-      }
-      if (!deps.gateway.isHostConnected(server.hostId)) {
-        res.status(503).json({ error: 'Host agent is offline' });
-        return;
-      }
+  router.put(
+    '/servers/:id/config',
+    auth,
+    canWrite,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const body = configSchema.parse(req.body);
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(server.hostId)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
 
-      const response = await deps.gateway.request(
-        server.hostId,
-        'server.putConfig',
-        {
-          serverId: server.id,
-          gamePort: server.gamePort,
-          process: body.process,
-          modConfig: body.modConfig,
-        },
-      );
-      if (!response.ok) {
-        res.status(502).json({ error: response.error ?? 'Failed to save config' });
-        return;
-      }
+        const response = await deps.gateway.request(
+          server.hostId,
+          'server.putConfig',
+          {
+            serverId: server.id,
+            gamePort: server.gamePort,
+            process: body.process,
+            modConfig: body.modConfig,
+          },
+        );
+        if (!response.ok) {
+          res
+            .status(502)
+            .json({ error: response.error ?? 'Failed to save config' });
+          return;
+        }
 
-      const updated = await deps.servers.updateProcess(server.id, body.process);
-      res.json({ config: response.result, server: updated });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        res.status(400).json({ error: err.flatten() });
-        return;
+        const updated = await deps.servers.updateProcess(
+          server.id,
+          body.process,
+        );
+        res.json({ config: response.result, server: updated });
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          res.status(400).json({ error: err.flatten() });
+          return;
+        }
+        next(err);
       }
-      next(err);
-    }
-  });
+    },
+  );
 
   return router;
 }

@@ -12,9 +12,24 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/installations', label: 'Installations', icon: Package },
-  { to: '/hosts', label: 'Hosts', icon: Network },
+  {
+    to: '/',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    permission: null as null | 'installations:read' | 'hosts:read',
+  },
+  {
+    to: '/installations',
+    label: 'Installations',
+    icon: Package,
+    permission: 'installations:read' as const,
+  },
+  {
+    to: '/hosts',
+    label: 'Hosts',
+    icon: Network,
+    permission: 'hosts:read' as const,
+  },
 ];
 
 export function AppShell() {
@@ -32,23 +47,27 @@ export function AppShell() {
           </h1>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {links.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text',
-                  isActive && 'bg-surface-2 text-text',
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-          {can('users:manage') ? (
+          {links
+            .filter(
+              ({ permission }) => permission === null || can(permission),
+            )
+            .map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text',
+                    isActive && 'bg-surface-2 text-text',
+                  )
+                }
+              >
+                <Icon className="size-4" />
+                {label}
+              </NavLink>
+            ))}
+          {can('users:manage') || can('servers:assign') ? (
             <NavLink
               to="/users"
               className={({ isActive }) =>

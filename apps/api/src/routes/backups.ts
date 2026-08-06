@@ -10,7 +10,9 @@ import type { AgentGateway } from '../agent/gateway.js';
 import type { ServerRegistry } from '../services/server-registry.js';
 import type { BackupRegistry } from '../services/backup-registry.js';
 import type { UserRegistry } from '../services/user-registry.js';
+import type { UserServerRegistry } from '../services/user-server-registry.js';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
+import { requireAssignedServerAccess } from '../auth/server-access.js';
 
 function paramId(value: string | string[] | undefined): string | null {
   if (typeof value === 'string' && value.length > 0) return value;
@@ -90,17 +92,20 @@ export function createBackupsRouter(deps: {
   backups: BackupRegistry;
   gateway: AgentGateway;
   users: UserRegistry;
+  userServers: UserServerRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
   const canRead = requirePermission('servers:read');
   const canWrite = requirePermission('servers:write');
   const canControl = requirePermission('servers:control');
+  const serverAccess = requireAssignedServerAccess(deps.userServers);
 
   router.get(
     '/servers/:id/backups',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -126,6 +131,7 @@ export function createBackupsRouter(deps: {
     '/servers/:id/backups',
     auth,
     canControl,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -168,6 +174,7 @@ export function createBackupsRouter(deps: {
     '/servers/:id/backups/:backupId/restore',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -265,6 +272,7 @@ export function createBackupsRouter(deps: {
     '/servers/:id/backups/:backupId',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -308,6 +316,7 @@ export function createBackupsRouter(deps: {
     '/servers/:id/backups/:backupId/download',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);

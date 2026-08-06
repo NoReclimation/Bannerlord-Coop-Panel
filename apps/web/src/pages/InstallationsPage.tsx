@@ -13,6 +13,7 @@ import { api } from '@/lib/api';
 
 export function InstallationsPage() {
   const { can } = useAuth();
+  const canRead = can('installations:read');
   const canWrite = can('installations:write');
   const [installations, setInstallations] = useState<GameInstallation[]>([]);
   const [sourcePath, setSourcePath] = useState(
@@ -42,8 +43,12 @@ export function InstallationsPage() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (canRead) void load();
+  }, [canRead, load]);
+
+  if (!canRead) {
+    return <p className="text-danger">Admin access required.</p>;
+  }
 
   async function handleInspect() {
     if (!canWrite) return;

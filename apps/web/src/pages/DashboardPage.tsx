@@ -24,10 +24,10 @@ interface DeleteRequestRow {
 
 export function DashboardPage() {
   const { can } = useAuth();
-  const canCreate = can('servers:create');
+  const canCreate = can('servers:create') && can('installations:read');
   const canDelete = can('servers:delete');
   const canDeleteRequest = can('servers:delete-request');
-  const canControl = can('servers:control');
+  const canStopAll = can('servers:stop-all');
   const canSelect = canDelete || canDeleteRequest;
 
   const [servers, setServers] = useState<GameServerRecord[]>([]);
@@ -226,7 +226,7 @@ export function DashboardPage() {
           <Button variant="secondary" onClick={() => void load()} disabled={busy}>
             Refresh
           </Button>
-          {canControl && hasRunnable ? (
+          {canStopAll && hasRunnable ? (
             <Button
               variant="secondary"
               disabled={busy}

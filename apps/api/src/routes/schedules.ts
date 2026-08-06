@@ -5,7 +5,9 @@ import type { ServerRegistry } from '../services/server-registry.js';
 import type { ScheduleRegistry } from '../services/schedule-registry.js';
 import type { ScheduleRunner } from '../services/schedule-runner.js';
 import type { UserRegistry } from '../services/user-registry.js';
+import type { UserServerRegistry } from '../services/user-server-registry.js';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
+import { requireAssignedServerAccess } from '../auth/server-access.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(128),
@@ -37,16 +39,19 @@ export function createSchedulesRouter(deps: {
   schedules: ScheduleRegistry;
   scheduleRunner: ScheduleRunner;
   users: UserRegistry;
+  userServers: UserServerRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
   const canRead = requirePermission('servers:read');
   const canControl = requirePermission('servers:control');
+  const serverAccess = requireAssignedServerAccess(deps.userServers);
 
   router.get(
     '/servers/:id/schedules',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -71,6 +76,7 @@ export function createSchedulesRouter(deps: {
     '/servers/:id/schedules',
     auth,
     canControl,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -104,6 +110,7 @@ export function createSchedulesRouter(deps: {
     '/servers/:id/schedules/:taskId',
     auth,
     canControl,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -138,6 +145,7 @@ export function createSchedulesRouter(deps: {
     '/servers/:id/schedules/:taskId',
     auth,
     canControl,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);
@@ -163,6 +171,7 @@ export function createSchedulesRouter(deps: {
     '/servers/:id/schedules/:taskId/run',
     auth,
     canControl,
+    serverAccess,
     async (req, res, next) => {
       try {
         const serverId = paramId(req.params.id);

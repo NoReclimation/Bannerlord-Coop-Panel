@@ -405,12 +405,48 @@ function overlapSeconds(
   to: Date,
   now: Date,
 ): number {
+  const iv = overlapInterval(joinedAt, leftAt, from, to, now);
+  if (!iv) return 0;
+  return Math.max(0, Math.floor((iv.end - iv.start) / 1000));
+}
+
+function overlapInterval(
+  joinedAt: string,
+  leftAt: string | null,
+  from: Date,
+  to: Date,
+  now: Date,
+): { start: number; end: number } | null {
   const start = Math.max(new Date(joinedAt).getTime(), from.getTime());
   const end = Math.min(
     leftAt ? new Date(leftAt).getTime() : now.getTime(),
     to.getTime(),
   );
-  return Math.max(0, Math.floor((end - start) / 1000));
+  if (end <= start) return null;
+  return { start, end };
+}
+
+/** Wall-clock seconds covered by any session (overlapping intervals merged). */
+function unionCoverageSeconds(
+  intervals: { start: number; end: number }[],
+): number {
+  if (intervals.length === 0) return 0;
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  let covered = 0;
+  let curStart = sorted[0]!.start;
+  let curEnd = sorted[0]!.end;
+  for (let i = 1; i < sorted.length; i++) {
+    const iv = sorted[i]!;
+    if (iv.start <= curEnd) {
+      curEnd = Math.max(curEnd, iv.end);
+    } else {
+      covered += curEnd - curStart;
+      curStart = iv.start;
+      curEnd = iv.end;
+    }
+  }
+  covered += curEnd - curStart;
+  return Math.floor(covered / 1000);
 }
 
 function summarizePlayers(
@@ -508,21 +544,17 @@ function buildSeries(
     }
     const end = bucketEnd > to ? to : bucketEnd;
     const byPlayer: Record<string, number> = {};
-    let totalSeconds = 0;
+    const intervals: { start: number; end: number }[] = [];
     for (const s of sessions) {
-      const seconds = overlapSeconds(
-        s.joinedAt,
-        s.leftAt,
-        bucketStart,
-        end,
-        now,
-      );
+      const iv = overlapInterval(s.joinedAt, s.leftAt, bucketStart, end, now);
+      if (!iv) continue;
+      const seconds = Math.floor((iv.end - iv.start) / 1000);
       if (seconds <= 0) continue;
       const label = isPlaceholderName(s.playerName)
         ? s.partyName ?? s.playerName
         : s.playerName;
       byPlayer[label] = (byPlayer[label] ?? 0) + seconds;
-      totalSeconds += seconds;
+      intervals.push(iv);
     }
     points.push({
       bucket: bucketStart.toISOString(),
@@ -535,7 +567,8 @@ function buildSeries(
               month: 'short',
               day: 'numeric',
             }),
-      totalSeconds,
+      // Wall-clock coverage — concurrent players do not stack.
+      totalSeconds: unionCoverageSeconds(intervals),
       byPlayer,
     });
     cursor.setTime(bucketEnd.getTime());

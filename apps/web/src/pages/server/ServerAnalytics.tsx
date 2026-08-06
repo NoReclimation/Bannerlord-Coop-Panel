@@ -59,11 +59,14 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
         label: p.label,
         minutes: chartMinutes(p.totalSeconds),
         totalSeconds: p.totalSeconds,
+        playerCount: Object.keys(p.byPlayer).length,
       })),
     [data],
   );
 
-  const maxMinutes = Math.max(1, ...chartData.map((d) => d.minutes));
+  // Hour buckets (today/yesterday) fill at 60m; day buckets (7d/30d) fill at 24h.
+  const bucketCapacityMinutes =
+    range === 'today' || range === 'yesterday' ? 60 : 24 * 60;
   const totalPlay = data?.players.reduce((n, p) => n + p.totalSeconds, 0) ?? 0;
 
   return (
@@ -71,7 +74,6 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
       <Card>
         <CardHeader
           title="Playtime analytics"
-          description="Sessions from @DS@ names, Coop party lines, and save.json Hero/Player ids."
           action={
             <div className="flex flex-wrap gap-1">
               {RANGES.map((r) => (
@@ -114,7 +116,10 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
       {error ? <p className="text-sm text-danger">{error}</p> : null}
 
       <Card>
-        <CardHeader title="Play time" description="Minutes played in each bucket" />
+        <CardHeader
+          title="Play time"
+          description="Time the server had anyone online (concurrent play does not stack)"
+        />
         <div className="px-4 pb-4 pt-2">
           {loading && !data ? (
             <p className="text-sm text-muted">Loading…</p>
@@ -124,23 +129,34 @@ export function ServerAnalyticsPanel({ serverId }: { serverId: string }) {
               `@DS@` player lists appear in the console.
             </p>
           ) : (
-            <div className="flex h-52 items-end gap-1.5 border-b border-border pt-4">
+            <div className="flex h-52 gap-1.5 border-b border-border pt-4">
               {chartData.map((d) => {
-                const heightPct = (d.minutes / maxMinutes) * 100;
+                const heightPct = Math.min(
+                  100,
+                  (d.minutes / bucketCapacityMinutes) * 100,
+                );
+                const playersLabel =
+                  d.playerCount === 1
+                    ? '1 player'
+                    : `${d.playerCount} players`;
                 return (
                   <div
                     key={d.label}
-                    className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-                    title={`${d.label}: ${d.minutes} min`}
+                    className="group flex h-full min-w-0 flex-1 flex-col items-center gap-1"
+                    title={`${d.label}: ${d.minutes} min online · ${playersLabel}`}
                   >
-                    <span className="invisible text-[10px] text-muted group-hover:visible">
-                      {d.minutes > 0 ? `${d.minutes}m` : ''}
-                    </span>
-                    <div
-                      className="w-full max-w-10 rounded-t bg-accent/90 transition-colors group-hover:bg-accent"
-                      style={{ height: `${Math.max(d.minutes > 0 ? 4 : 0, heightPct)}%` }}
-                    />
-                    <span className="w-full truncate text-center text-[10px] text-muted">
+                    <div className="relative flex min-h-0 w-full flex-1 flex-col justify-end">
+                      <span className="pointer-events-none absolute inset-x-0 -top-4 text-center text-[10px] text-muted opacity-0 group-hover:opacity-100">
+                        {d.minutes > 0 ? `${d.minutes}m` : ''}
+                      </span>
+                      <div
+                        className="mx-auto w-full max-w-10 rounded-t bg-accent/90 transition-colors group-hover:bg-accent"
+                        style={{
+                          height: heightPct > 0 ? `${Math.max(heightPct, 2)}%` : '0',
+                        }}
+                      />
+                    </div>
+                    <span className="w-full shrink-0 truncate text-center text-[10px] text-muted">
                       {d.label}
                     </span>
                   </div>

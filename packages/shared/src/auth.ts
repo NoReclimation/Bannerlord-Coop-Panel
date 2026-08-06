@@ -18,6 +18,8 @@ export type Permission =
   | 'servers:delete-request'
   | 'servers:control'
   | 'servers:kill'
+  | 'servers:stop-all'
+  | 'servers:assign'
   | 'installations:read'
   | 'installations:write'
   | 'hosts:read'
@@ -37,6 +39,8 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'servers:delete-request',
     'servers:control',
     'servers:kill',
+    'servers:stop-all',
+    'servers:assign',
     'installations:read',
     'installations:write',
     'hosts:read',
@@ -53,8 +57,8 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'servers:create',
     'servers:delete-request',
     'servers:control',
-    'installations:read',
-    'hosts:read',
+    'servers:stop-all',
+    'servers:assign',
     'settings:read',
     'console:read',
     'console:write',
@@ -62,8 +66,6 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   user: [
     'servers:read',
     'servers:control',
-    'installations:read',
-    'hosts:read',
     'settings:read',
     'console:read',
   ],
@@ -75,4 +77,9 @@ export function permissionsFor(role: UserRole): readonly Permission[] {
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {
   return (ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.user).includes(permission);
+}
+
+/** Admins and moderators see every server; users only see assigned ones. */
+export function seesAllServers(role: UserRole): boolean {
+  return role === 'admin' || role === 'moderator';
 }

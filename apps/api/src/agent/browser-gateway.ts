@@ -15,9 +15,11 @@ import type { ApiConfig } from '../config.js';
 import { verifyAccessToken } from '../auth/tokens.js';
 import type { UserRegistry } from '../services/user-registry.js';
 import type { ServerRegistry } from '../services/server-registry.js';
+import type { UserServerRegistry } from '../services/user-server-registry.js';
 import type { AgentGateway } from './gateway.js';
 import type { PlayerCountStore } from '../services/player-count-store.js';
 import type { PlaytimeRegistry } from '../services/playtime-registry.js';
+import { userCanAccessServer } from '../auth/server-access.js';
 
 interface ClientSocketData {
   userId: string;
@@ -38,6 +40,7 @@ export class BrowserGateway {
     private readonly config: ApiConfig,
     private readonly users: UserRegistry,
     private readonly servers: ServerRegistry,
+    private readonly userServers: UserServerRegistry,
     private readonly agents: AgentGateway,
     private readonly playerCounts: PlayerCountStore,
     private readonly playtime: PlaytimeRegistry,
@@ -217,6 +220,21 @@ export class BrowserGateway {
     socket: Socket,
     serverId: string,
   ): Promise<void> {
+    const data = socket.data as ClientSocketData;
+    const user = await this.users.get(data.userId);
+    if (
+      !user ||
+      !(await userCanAccessServer(user, serverId, this.userServers))
+    ) {
+      this.emitStatus(socket, {
+        serverId,
+        subscribed: false,
+        streaming: false,
+        message: 'Server not found',
+      });
+      return;
+    }
+
     const server = await this.servers.get(serverId);
     if (!server) {
       this.emitStatus(socket, {
@@ -229,7 +247,6 @@ export class BrowserGateway {
     }
 
     const room = `server:${serverId}`;
-    const data = socket.data as ClientSocketData;
     if (!data.subscriptions.has(serverId)) {
       await socket.join(room);
       data.subscriptions.add(serverId);
@@ -304,6 +321,15 @@ export class BrowserGateway {
         subscribed: true,
         streaming: true,
         message: 'Forbidden: cannot send console commands',
+      });
+      return;
+    }
+    if (!(await userCanAccessServer(user, payload.serverId, this.userServers))) {
+      this.emitStatus(socket, {
+        serverId: payload.serverId,
+        subscribed: false,
+        streaming: false,
+        message: 'Server not found',
       });
       return;
     }

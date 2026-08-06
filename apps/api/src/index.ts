@@ -19,6 +19,7 @@ import { BackupRegistry } from './services/backup-registry.js';
 import { PlayerCountStore } from './services/player-count-store.js';
 import { PlaytimeRegistry } from './services/playtime-registry.js';
 import { DeleteRequestRegistry } from './services/delete-request-registry.js';
+import { UserServerRegistry } from './services/user-server-registry.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
   const playerCounts = new PlayerCountStore();
   const playtime = new PlaytimeRegistry(pool);
   const deleteRequests = new DeleteRequestRegistry(pool);
+  const userServers = new UserServerRegistry(pool);
 
   const defaultHost = await hosts.seedDefaultHost(config);
   console.log(
@@ -60,6 +62,7 @@ async function main(): Promise<void> {
     config,
     users,
     servers,
+    userServers,
     gateway,
     playerCounts,
     playtime,
@@ -93,6 +96,7 @@ async function main(): Promise<void> {
     browserGateway,
     playtime,
     deleteRequests,
+    userServers,
   });
   httpServer.on('request', app);
 

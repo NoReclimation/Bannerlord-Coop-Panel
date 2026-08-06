@@ -9,7 +9,9 @@ import type { ApiConfig } from '../config.js';
 import type { AgentGateway } from '../agent/gateway.js';
 import type { ServerRegistry } from '../services/server-registry.js';
 import type { UserRegistry } from '../services/user-registry.js';
+import type { UserServerRegistry } from '../services/user-server-registry.js';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
+import { requireAssignedServerAccess } from '../auth/server-access.js';
 
 type ServerCtx =
   | { ok: true; server: GameServerRecord }
@@ -38,11 +40,13 @@ export function createFilesRouter(deps: {
   servers: ServerRegistry;
   gateway: AgentGateway;
   users: UserRegistry;
+  userServers: UserServerRegistry;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
   const canRead = requirePermission('servers:read');
   const canWrite = requirePermission('servers:write');
+  const serverAccess = requireAssignedServerAccess(deps.userServers);
 
   async function resolveServer(
     rawId: string | string[] | undefined,
@@ -52,7 +56,12 @@ export function createFilesRouter(deps: {
     return withServer(deps.servers, deps.gateway, id);
   }
 
-  router.get('/servers/:id/files', auth, canRead, async (req, res, next) => {
+  router.get(
+    '/servers/:id/files',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
     try {
       const path = typeof req.query.path === 'string' ? req.query.path : '.';
       const ctx = await resolveServer(req.params.id);
@@ -72,12 +81,14 @@ export function createFilesRouter(deps: {
     } catch (err) {
       next(err);
     }
-  });
+  },
+  );
 
   router.get(
     '/servers/:id/files/read',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const path = typeof req.query.path === 'string' ? req.query.path : '';
@@ -110,6 +121,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/download',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const path = typeof req.query.path === 'string' ? req.query.path : '';
@@ -153,6 +165,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/search',
     auth,
     canRead,
+    serverAccess,
     async (req, res, next) => {
       try {
         const path = typeof req.query.path === 'string' ? req.query.path : '.';
@@ -184,7 +197,7 @@ export function createFilesRouter(deps: {
     encoding: z.enum(['utf8', 'base64']).default('utf8'),
   });
 
-  router.put('/servers/:id/files', auth, canWrite, async (req, res, next) => {
+  router.put('/servers/:id/files', auth, canWrite, serverAccess, async (req, res, next) => {
     try {
       const body = writeSchema.parse(req.body);
       const ctx = await resolveServer(req.params.id);
@@ -214,6 +227,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/mkdir',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const body = z.object({ path: z.string().min(1) }).parse(req.body);
@@ -251,6 +265,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/rename',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const body = renameSchema.parse(req.body);
@@ -283,6 +298,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/move',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const body = renameSchema.parse(req.body);
@@ -315,6 +331,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const path = typeof req.query.path === 'string' ? req.query.path : '';
@@ -347,6 +364,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/extract',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const body = z
@@ -381,6 +399,7 @@ export function createFilesRouter(deps: {
     '/servers/:id/files/compress',
     auth,
     canWrite,
+    serverAccess,
     async (req, res, next) => {
       try {
         const body = z

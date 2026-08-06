@@ -58,7 +58,7 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    let message = res.statusText;
+    let message = res.statusText || `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { error?: string | object };
       message =
@@ -66,7 +66,11 @@ async function request<T>(
           ? body.error
           : JSON.stringify(body.error ?? message);
     } catch {
-      // ignore
+      // Proxy/HTML errors often aren't JSON — keep statusText.
+    }
+    if (res.status >= 500 && message === 'Internal Server Error') {
+      message =
+        'Server error (500). Is the API running on :3000? Check API logs.';
     }
     throw new Error(message);
   }
@@ -290,6 +294,34 @@ export const api = {
   },
   deleteUser(id: string) {
     return request<void>(`/api/users/${id}`, { method: 'DELETE' });
+  },
+  listUserServers(userId: string) {
+    return request<{ userId: string; serverIds: string[] }>(
+      `/api/users/${userId}/servers`,
+    );
+  },
+  setUserServers(userId: string, serverIds: string[]) {
+    return request<{ userId: string; serverIds: string[] }>(
+      `/api/users/${userId}/servers`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ serverIds }),
+      },
+    );
+  },
+  listServerAssignees(serverId: string) {
+    return request<{ serverId: string; userIds: string[] }>(
+      `/api/servers/${serverId}/assignees`,
+    );
+  },
+  setServerAssignees(serverId: string, userIds: string[]) {
+    return request<{ serverId: string; userIds: string[] }>(
+      `/api/servers/${serverId}/assignees`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ userIds }),
+      },
+    );
   },
   listFiles(serverId: string, path = '.') {
     const q = new URLSearchParams({ path });

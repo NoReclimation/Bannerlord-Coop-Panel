@@ -3,8 +3,10 @@ import type { HostNode } from '@bannerlord-panel/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/lib/auth';
 
 export function HostsPage() {
+  const { can } = useAuth();
   const [hosts, setHosts] = useState<HostNode[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,8 +21,12 @@ export function HostsPage() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (can('hosts:read')) void load();
+  }, [can, load]);
+
+  if (!can('hosts:read')) {
+    return <p className="text-danger">Admin access required.</p>;
+  }
 
   return (
     <div>
