@@ -99,7 +99,16 @@ async function main(): Promise<void> {
     deleteRequests,
     userServers,
   });
-  httpServer.on('request', app);
+  // Socket.IO attaches its own `request` listeners on the same server.
+  // Do not let Express touch those paths — dual writers cause 500s on
+  // Engine.IO polling (and can destabilize the process).
+  httpServer.on('request', (req, res) => {
+    const url = req.url ?? '';
+    if (url.startsWith('/client-socket') || url.startsWith('/agent-socket')) {
+      return;
+    }
+    app(req, res);
+  });
 
   httpServer.listen(config.API_PORT, config.API_HOST, () => {
     console.log(
