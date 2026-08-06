@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @bannerlord-panel/shared build",
     "dev": "tsx watch src/index.ts",
+    "prestart": "pnpm --filter @bannerlord-panel/shared build",
     "start": "node dist/index.js",
+    "prebuild": "pnpm --filter @bannerlord-panel/shared build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/cli/migrate.ts"

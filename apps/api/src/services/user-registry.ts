@@ -1,5 +1,4 @@
 import type { AuthUser, UserRole } from '@bannerlord-panel/shared';
-import { normalizeRole } from '@bannerlord-panel/shared';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { hashPassword } from '../auth/passwords.js';
@@ -13,6 +12,13 @@ interface UserRow {
   disabled: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+/** Keep local so API boot doesn't depend on a freshly rebuilt shared dist. */
+function normalizeRole(role: string | null | undefined): UserRole {
+  if (role === 'admin' || role === 'moderator' || role === 'user') return role;
+  if (role === 'viewer') return 'user';
+  return 'user';
 }
 
 function toAuthUser(row: UserRow): AuthUser {
