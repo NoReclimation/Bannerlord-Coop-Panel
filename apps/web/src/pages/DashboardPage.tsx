@@ -53,7 +53,11 @@ export function DashboardPage() {
         setDeleteRequests(reqs.requests);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load servers');
+      const message = err instanceof Error ? err.message : 'Failed to load servers';
+      // Permission-denied: empty state is enough; don't surface "Forbidden".
+      if (message !== 'Forbidden') {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
