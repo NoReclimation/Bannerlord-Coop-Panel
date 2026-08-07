@@ -141,8 +141,7 @@ export function ServerModulesPanel({
           <h3 className="text-xl font-semibold text-text">Modules</h3>
           <p className="mt-1 text-sm text-muted">
             Choose an admin-defined modpack, or review this server’s active load
-            order. Third-party mods live once under the host{' '}
-            <code className="text-accent">mods/</code> folder.
+            order.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
