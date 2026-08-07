@@ -184,6 +184,24 @@ export function ServerConsole({ serverId }: { serverId: string }) {
     bufferRef.current = [];
   }
 
+  function refreshConsole() {
+    setLines([]);
+    bufferRef.current = [];
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setStatus('Disconnected — reconnecting…');
+      return;
+    }
+    setStatus('Refreshing…');
+    // Drop then re-join so the agent replays its recent log tail (first
+    // subscriber path). A short delay avoids racing the unsubscribe handler.
+    socket.emit(WsEvents.ConsoleUnsubscribe, { serverId });
+    window.setTimeout(() => {
+      if (socketRef.current !== socket || !socket.connected) return;
+      socket.emit(WsEvents.ConsoleSubscribe, { serverId });
+    }, 120);
+  }
+
   function downloadLog() {
     const text = lines.map((l) => l.raw).join('\n');
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -285,6 +303,14 @@ export function ServerConsole({ serverId }: { serverId: string }) {
         </Button>
         <Button size="sm" variant="secondary" onClick={clearConsole}>
           Clear
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={refreshConsole}
+          disabled={!connected}
+        >
+          Refresh
         </Button>
         <Button size="sm" variant="secondary" onClick={downloadLog}>
           Download log
