@@ -11,6 +11,11 @@ export function serverRoot(config: AgentConfig, serverId: string): string {
   return join(config.AGENT_DATA_ROOT, 'servers', serverId);
 }
 
+/** Host path for Files UI: Game Saves, logs, server-config (not wineprefix/mod-config). */
+export function serverDataDir(config: AgentConfig, serverId: string): string {
+  return join(serverRoot(config, serverId), 'data');
+}
+
 function stripJsonComments(raw: string): string {
   return raw
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -55,6 +60,19 @@ export async function ensureServerFilesystem(
     await writeFile(
       modConfigPath,
       `${JSON.stringify({ difficulty: {}, modOptions: {} }, null, 2)}\n`,
+      'utf8',
+    );
+  }
+
+  const modulesPath = join(root, 'modules.json');
+  try {
+    await access(modulesPath);
+  } catch {
+    // Default load order is filled by ModulesManager on first get/put;
+    // leave a placeholder so entrypoint can no-op gracefully until scan.
+    await writeFile(
+      modulesPath,
+      `${JSON.stringify({ enabledOrderedIds: [] }, null, 2)}\n`,
       'utf8',
     );
   }

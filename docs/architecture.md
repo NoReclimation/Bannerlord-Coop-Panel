@@ -81,7 +81,7 @@ Derived from the official Windows x64 package (`release-info.txt`, layered-v1 la
 | Gameplay | Parent `mod-config.json` |
 | Client port | UDP (default **4200**) |
 | Engine | Dedicated custom server arg (e.g. **7210**) |
-| Modules | Native → SandBoxCore → SandBox → Coop → DedicatedServer.Windows |
+| Modules | Native → SandBoxCore → SandBox → Coop → DedicatedServer.Windows (default); overridable per instance via Modules tab |
 | Integrity | Coop DLLs SHA-256 pinned; mismatch → exit code **4** |
 | Console | `help`, `status`, `players`, `save`, `say`, `kick`, `stop` + `@DS@` events |
 
@@ -97,7 +97,8 @@ Shared RO install mirrors `engine/` (bin, Modules, Parameters, dotnet). Per-serv
       engine/
       release-info.txt
       archive-layout.json
-  mods/
+  mods/                    # shared third-party Modules (install once)
+  modpacks/                # named load-order presets (JSON)
   servers/
     <server-id>/
       wineprefix/
@@ -106,6 +107,8 @@ Shared RO install mirrors `engine/` (bin, Modules, Parameters, dotnet). Per-serv
         Game Saves/
         logs/
       mod-config.json
+      modules.json         # per-instance enabledOrderedIds
+      modules.arg          # `_MODULES_*…*_MODULES_` for entrypoint
       server-mods/
       tmp/
   backups/
@@ -115,9 +118,11 @@ Shared RO install mirrors `engine/` (bin, Modules, Parameters, dotnet). Per-serv
 Container mounts:
 
 - **RW:** installation → `/opt/bannerlord` (Coop AutoSync writes `AutoSyncExport` under the Coop module; cannot be `:ro`)
-- **RO:** selected global mods (when supported)
+- **RO:** selected global mods from `{dataRoot}/mods/<Module>/` → `/opt/bannerlord/engine/Modules/<Module>`
 - **RW:** `servers/<id>/` → `/srv/instance` (`--data-dir /srv/instance/data`)
 - **RW:** wineprefix, tmp
+
+Per-instance module enablement + load order is stored in `servers/<id>/modules.json` (and `modules.arg` for the entrypoint). On start, the runtime passes Bannerlord’s `_MODULES_*…*_MODULES_` argument. Clients must use the same module set.
 
 Workspace `DedicatedServer/` and `CoopData/` are **staging inputs only** (gitignored). Containers never mount the workspace copies. See [replacing-installations.md](./replacing-installations.md).
 
@@ -255,7 +260,7 @@ Browser connects to `/client-socket` with JWT; subscribe/unsubscribe ref-counts 
 
 ```text
 Browser → REST /api/servers/:id/files/* → AgentGateway → fs.* → ServerFileManager
-  → {dataRoot}/servers/<id>/  (reject path escape)
+  → {dataRoot}/servers/<id>/data/  (reject path escape; hides wineprefix + mod-config)
 ```
 
 Upload/download use base64 over JSON (45mb body limit) or binary download. Zip via `adm-zip`. Mutations require `servers:write`.
@@ -274,7 +279,7 @@ Schedules live in Postgres (`scheduled_tasks`). Cron expressions are UTC.
 
 ```text
 API → agent server.backup → zip to {dataRoot}/backups/<serverId>/<id>.zip
-  includes: data/server-config.json, data/Game Saves/, mod-config.json, server-mods/
+  includes: data/server-config.json, data/Game Saves/, mod-config.json, modules.json, modules.arg, server-mods/
   excludes: wineprefix/, tmp/, data/logs/
 Restore: stop if running → extract → optional start
 Retention: settings.backups.retentionCount (default 10)

@@ -117,9 +117,9 @@ export function ServerFileManager({ serverId }: { serverId: string }) {
   const [editorTruncated, setEditorTruncated] = useState(false);
 
   const crumbs = useMemo(() => {
-    if (!cwd || cwd === '.') return [{ label: 'server', path: '.' }];
+    if (!cwd || cwd === '.') return [{ label: 'data', path: '.' }];
     const parts = cwd.split('/').filter(Boolean);
-    const items = [{ label: 'server', path: '.' }];
+    const items = [{ label: 'data', path: '.' }];
     let acc = '';
     for (const part of parts) {
       acc = acc ? `${acc}/${part}` : part;

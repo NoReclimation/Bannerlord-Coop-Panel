@@ -17,6 +17,8 @@ const INCLUDE_PATHS = [
   'data/server-config.json',
   'data/Game Saves',
   'mod-config.json',
+  'modules.json',
+  'modules.arg',
   'server-mods',
 ] as const;
 
@@ -118,6 +120,8 @@ export class BackupManager {
       'data/server-config.json',
       'data/Game Saves',
       'mod-config.json',
+      'modules.json',
+      'modules.arg',
       'server-mods',
     ]) {
       const abs = join(destRoot, rel);

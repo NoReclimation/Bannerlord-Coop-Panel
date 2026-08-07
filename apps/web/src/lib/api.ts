@@ -10,10 +10,13 @@ import type {
   HostNode,
   InstallationImportResult,
   InstallationInspectResult,
+  ModpackPreset,
   Permission,
+  ScannedModule,
   ScheduledTask,
   ServerAnalytics,
   ServerConfigBundle,
+  ServerModulesConfig,
   UpdateScheduledTaskInput,
   AnalyticsRange,
 } from '@bannerlord-panel/shared';
@@ -172,6 +175,45 @@ export const api = {
       `/api/servers/${id}/config`,
       { method: 'PUT', body: JSON.stringify(config) },
     );
+  },
+  getServerModules(id: string) {
+    return request<{ modules: ScannedModule[]; config: ServerModulesConfig }>(
+      `/api/servers/${id}/modules`,
+    );
+  },
+  rescanServerModules(id: string) {
+    return request<{ modules: ScannedModule[] }>(
+      `/api/servers/${id}/modules/rescan`,
+      { method: 'POST' },
+    );
+  },
+  putServerModules(id: string, config: ServerModulesConfig) {
+    return request<{
+      config: ServerModulesConfig;
+      restartRequired: boolean;
+    }>(`/api/servers/${id}/modules`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  },
+  listModpacks(hostId: string) {
+    return request<{ modpacks: ModpackPreset[] }>(
+      `/api/hosts/${hostId}/modpacks`,
+    );
+  },
+  putModpack(
+    hostId: string,
+    pack: { id?: string; name: string; enabledOrderedIds: string[] },
+  ) {
+    return request<{ modpack: ModpackPreset }>(
+      `/api/hosts/${hostId}/modpacks`,
+      { method: 'PUT', body: JSON.stringify(pack) },
+    );
+  },
+  deleteModpack(hostId: string, id: string) {
+    return request<void>(`/api/hosts/${hostId}/modpacks/${id}`, {
+      method: 'DELETE',
+    });
   },
   listHosts() {
     return request<{ hosts: HostNode[] }>('/api/hosts');

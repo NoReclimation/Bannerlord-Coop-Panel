@@ -54,6 +54,13 @@ export type {
   InstallationImportResult,
   InstallationInspectPayload,
   InstallationInspectResult,
+  ModpacksDeletePayload,
+  ModpacksListPayload,
+  ModpacksPutPayload,
+  ModulesConfigPayload,
+  ModulesPutConfigPayload,
+  ModulesScanPayload,
+  ModulesScanResult,
   ServerBackupCreatePayload,
   ServerBackupIdPayload,
   ServerBackupReadResult,
@@ -67,6 +74,17 @@ export type {
   ServerRuntimeStatus,
 } from './agent-protocol.js';
 export { DEFAULT_BACKUP_RETENTION } from './agent-protocol.js';
+export type {
+  ModpackPreset,
+  ModuleSource,
+  ScannedModule,
+  ServerModulesConfig,
+} from './modules.js';
+export {
+  DEFAULT_MODULE_ORDER,
+  REQUIRED_MODULE_IDS,
+  isRequiredModuleId,
+} from './modules.js';
 export type { AuthUser, Permission, UserRole } from './auth.js';
 export {
   hasPermission,

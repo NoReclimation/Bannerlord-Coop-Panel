@@ -69,6 +69,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'servers:control',
     'settings:read',
     'console:read',
+    'console:write',
   ],
 };
 

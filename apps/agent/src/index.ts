@@ -6,6 +6,7 @@ import { ConsoleStreamer } from './docker/console-streamer.js';
 import { ServerFileManager } from './fs/server-file-manager.js';
 import { BackupManager } from './fs/backup-manager.js';
 import { InstallationManager } from './fs/installation-manager.js';
+import { ModulesManager } from './fs/modules-manager.js';
 import { AgentCommandRouter } from './adapters/command-router.js';
 import { ApiConnection } from './api-connection.js';
 import { createAgentApp } from './app.js';
@@ -13,12 +14,14 @@ import { createAgentApp } from './app.js';
 async function main(): Promise<void> {
   const config = loadAgentConfig();
   const docker = createDockerClient(config);
-  const manager = new DockerServerManager(docker, config);
+  const modules = new ModulesManager(config);
+  const manager = new DockerServerManager(docker, config, modules);
   const files = new ServerFileManager(config);
   const backups = new BackupManager(config);
   const installations = new InstallationManager(config);
 
   await installations.ensureDirs();
+  await modules.ensureDirs();
 
   const connectionRef: { current: ApiConnection | null } = { current: null };
   const consoleStreamer = new ConsoleStreamer(
@@ -45,6 +48,7 @@ async function main(): Promise<void> {
     files,
     backups,
     installations,
+    modules,
     consoleStreamer,
   );
 

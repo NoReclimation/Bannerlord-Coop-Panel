@@ -25,6 +25,7 @@ import { createUsersRouter } from './routes/users.js';
 import { createFilesRouter } from './routes/files.js';
 import { createSchedulesRouter } from './routes/schedules.js';
 import { createBackupsRouter } from './routes/backups.js';
+import { createModpacksRouter } from './routes/modpacks.js';
 import type { ScheduleRegistry } from './services/schedule-registry.js';
 import type { ScheduleRunner } from './services/schedule-runner.js';
 import type { BackupRegistry } from './services/backup-registry.js';
@@ -72,6 +73,7 @@ export function createApp(deps: AppDeps): Express {
   app.use('/api', createFilesRouter(deps));
   app.use('/api', createSchedulesRouter(deps));
   app.use('/api', createBackupsRouter(deps));
+  app.use('/api', createModpacksRouter(deps));
   app.use('/api', createUsersRouter(deps));
 
   app.use(

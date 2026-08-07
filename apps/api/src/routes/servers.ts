@@ -632,5 +632,149 @@ export function createServersRouter(deps: {
     },
   );
 
+  const modulesConfigSchema = z.object({
+    enabledOrderedIds: z.array(z.string().min(1)).min(1),
+  });
+
+  async function installationPathForServer(
+    server: { installationId: string },
+  ): Promise<string | undefined> {
+    const installation = await deps.installations.get(server.installationId);
+    return installation?.path;
+  }
+
+  router.get(
+    '/servers/:id/modules',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(server.hostId)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
+        const installationPath = await installationPathForServer(server);
+        const [scanRes, configRes] = await Promise.all([
+          deps.gateway.request(server.hostId, 'modules.scan', {
+            serverId: server.id,
+            installationPath,
+          }),
+          deps.gateway.request(server.hostId, 'modules.getConfig', {
+            serverId: server.id,
+            installationPath,
+          }),
+        ]);
+        if (!scanRes.ok) {
+          res
+            .status(502)
+            .json({ error: scanRes.error ?? 'Failed to scan modules' });
+          return;
+        }
+        if (!configRes.ok) {
+          res
+            .status(502)
+            .json({ error: configRes.error ?? 'Failed to load module config' });
+          return;
+        }
+        res.json({
+          modules: (scanRes.result as { modules: unknown }).modules,
+          config: configRes.result,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.post(
+    '/servers/:id/modules/rescan',
+    auth,
+    canRead,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(server.hostId)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
+        const installationPath = await installationPathForServer(server);
+        const scanRes = await deps.gateway.request(
+          server.hostId,
+          'modules.scan',
+          { serverId: server.id, installationPath },
+        );
+        if (!scanRes.ok) {
+          res
+            .status(502)
+            .json({ error: scanRes.error ?? 'Failed to scan modules' });
+          return;
+        }
+        res.json({
+          modules: (scanRes.result as { modules: unknown }).modules,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.put(
+    '/servers/:id/modules',
+    auth,
+    canWrite,
+    serverAccess,
+    async (req, res, next) => {
+      try {
+        const body = modulesConfigSchema.parse(req.body);
+        const server = await deps.servers.get(req.params.id);
+        if (!server) {
+          res.status(404).json({ error: 'Server not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(server.hostId)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
+        const installationPath = await installationPathForServer(server);
+        const response = await deps.gateway.request(
+          server.hostId,
+          'modules.putConfig',
+          {
+            serverId: server.id,
+            installationPath,
+            config: { enabledOrderedIds: body.enabledOrderedIds },
+          },
+        );
+        if (!response.ok) {
+          res
+            .status(502)
+            .json({ error: response.error ?? 'Failed to save modules' });
+          return;
+        }
+        res.json({
+          config: response.result,
+          restartRequired: server.status === 'running',
+        });
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          res.status(400).json({ error: err.flatten() });
+          return;
+        }
+        next(err);
+      }
+    },
+  );
+
   return router;
 }

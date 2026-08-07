@@ -90,7 +90,9 @@ sudo chown -R "$USER:$USER" /var/lib/bannerlord-panel
 | `installations/` | Copied DedicatedServer packages (one folder per version) |
 | `servers/` | **Created by the panel** when you create a server — do not invent these by hand unless restoring |
 | `backups/` | **Created by the panel** when you run a backup |
-| `mods/` / `templates/` | Reserved for later |
+| `mods/` | Shared Bannerlord module folders (drop once; RO-mounted per server) |
+| `modpacks/` | Named module load-order presets |
+| `templates/` | Reserved for later |
 
 ---
 
@@ -232,7 +234,7 @@ Skip the curl examples unless you prefer the API.
 1. **Dashboard** → **Create server**  
 2. Pick installation, name, optional password  
 3. Leave **Start server after create** checked → **Create & start**  
-4. You land on the server page (Console / Files / Schedules / Backups / Settings)  
+4. You land on the server page (Console / Files / Schedules / Backups / Modules / Settings)  
 5. Later: use **Start / Stop / Restart / Kill** on the dashboard card or server page  
 
 UDP port is auto-assigned (**4200**, then 4201, …).
@@ -244,6 +246,8 @@ UDP port is auto-assigned (**4200**, then 4201, …).
     Game Saves/
     logs/
   mod-config.json
+  modules.json              ← per-instance module load order
+  modules.arg
   wineprefix/
   tmp/
 ```
@@ -253,8 +257,9 @@ UDP port is auto-assigned (**4200**, then 4201, …).
 | Host path | Container | Mode |
 |-----------|-----------|------|
 | `installations/<id>/` | `/opt/bannerlord` | read-write (Coop AutoSync writes under the Coop module) |
-| `servers/<uuid>/data/` | `/srv/data` | read-write (`--data-dir`) |
-| `servers/<uuid>/wineprefix/` | wine prefix | read-write |
+| `servers/<uuid>/` | `/srv/instance` | read-write (`--data-dir /srv/instance/data`) |
+| `servers/<uuid>/wineprefix/` | `/wineprefix` | read-write |
+| `mods/<Module>/` (enabled) | `/opt/bannerlord/engine/Modules/<Module>` | read-only |
 
 ---
 
@@ -263,6 +268,8 @@ UDP port is auto-assigned (**4200**, then 4201, …).
 | Action | Where it lands / command |
 |--------|---------------------------|
 | Edit settings | UI → server → **Settings** → writes `servers/<id>/data/server-config.json` + `mod-config.json` |
+| Modules / load order | UI → **Modules** → `modules.json` + RO binds from `mods/` |
+| Drop a shared mod | Copy module folder into `/var/lib/bannerlord-panel/mods/<ModuleId>/` (needs `SubModule.xml`) |
 | Console | UI → **Console** |
 | Browse files | UI → **Files** → jailed to `servers/<id>/` |
 | Schedule restart/backup | UI → **Schedules** |

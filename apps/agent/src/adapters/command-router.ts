@@ -8,6 +8,11 @@ import type {
   FsWritePayload,
   InstallationImportPayload,
   InstallationInspectPayload,
+  ModpacksDeletePayload,
+  ModpacksPutPayload,
+  ModulesConfigPayload,
+  ModulesPutConfigPayload,
+  ModulesScanPayload,
   ServerBackupCreatePayload,
   ServerBackupIdPayload,
   ServerBackupRestorePayload,
@@ -21,6 +26,7 @@ import type { DockerServerManager } from '../docker/server-manager.js';
 import type { ServerFileManager } from '../fs/server-file-manager.js';
 import type { BackupManager } from '../fs/backup-manager.js';
 import type { InstallationManager } from '../fs/installation-manager.js';
+import type { ModulesManager } from '../fs/modules-manager.js';
 import type { ConsoleStreamer } from '../docker/console-streamer.js';
 import { readSavePlayers } from '../fs/save-players.js';
 
@@ -42,6 +48,7 @@ export class AgentCommandRouter {
     private readonly files: ServerFileManager,
     private readonly backups: BackupManager,
     private readonly installations: InstallationManager,
+    private readonly modules: ModulesManager,
     private readonly consoleStreamer?: ConsoleStreamer,
   ) {}
 
@@ -150,6 +157,47 @@ export class AgentCommandRouter {
           const payload = request.payload as InstallationImportPayload;
           const result = await this.installations.importFromPath(payload);
           return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modules.scan': {
+          const payload = (request.payload ?? {}) as ModulesScanPayload;
+          const result = await this.modules.scan(payload);
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modules.getConfig': {
+          const payload = request.payload as ModulesConfigPayload & {
+            installationPath?: string;
+          };
+          const result = await this.modules.getConfig(
+            payload.serverId,
+            payload.installationPath,
+          );
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modules.putConfig': {
+          const payload = request.payload as ModulesPutConfigPayload & {
+            installationPath?: string;
+          };
+          const result = await this.modules.putConfig(
+            payload,
+            payload.installationPath,
+          );
+          // Rebuild binds so newly selected global mods are mounted.
+          await this.docker.recreateForModules(payload.serverId);
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modpacks.list': {
+          const result = await this.modules.listModpacks();
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modpacks.put': {
+          const payload = request.payload as ModpacksPutPayload;
+          const result = await this.modules.putModpack(payload);
+          return { requestId: request.requestId, ok: true, result };
+        }
+        case 'modpacks.delete': {
+          const payload = request.payload as ModpacksDeletePayload;
+          await this.modules.deleteModpack(payload);
+          return { requestId: request.requestId, ok: true };
         }
         case 'fs.list': {
           const { serverId, path } = request.payload as FsPathPayload;

@@ -7,10 +7,12 @@ import {
   type ServerPutConfigPayload,
 } from '@bannerlord-panel/shared';
 import type { AgentConfig } from '../config.js';
+import type { ModulesManager } from '../fs/modules-manager.js';
 import { containerNameFor } from './client.js';
 import {
   ensureServerFilesystem,
   readServerConfig,
+  serverRoot,
   writeServerConfig,
 } from './filesystem.js';
 
@@ -113,10 +115,38 @@ function portsFromContainer(
   return undefined;
 }
 
+function installationPathFromBinds(binds: string[]): string | undefined {
+  for (const bind of binds) {
+    const idx = bind.indexOf(':/opt/bannerlord');
+    if (idx > 0) return bind.slice(0, idx);
+  }
+  return undefined;
+}
+
+function coreBinds(
+  installationPath: string,
+  root: string,
+  wineDir: string,
+): string[] {
+  return [
+    `${installationPath}:/opt/bannerlord`,
+    `${root}:/srv/instance`,
+    `${wineDir}:/wineprefix`,
+  ];
+}
+
+function modBindsEqual(current: string[], desired: string[]): boolean {
+  const a = [...current].filter((b) => b.includes('/engine/Modules/')).sort();
+  const b = [...desired].sort();
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}
+
 export class DockerServerManager {
   constructor(
     private readonly docker: Dockerode,
     private readonly config: AgentConfig,
+    private readonly modules: ModulesManager,
   ) {}
 
   async create(payload: ServerCreatePayload): Promise<ServerCreateResult> {
@@ -124,6 +154,14 @@ export class DockerServerManager {
       this.config,
       payload,
     );
+
+    // Seed default module load order from the installation scan.
+    try {
+      await this.modules.getConfig(payload.serverId, payload.installationPath);
+    } catch {
+      // Install may lack Modules yet; entrypoint falls back safely.
+    }
+
     const name = containerNameFor(payload.serverId);
 
     try {
@@ -132,6 +170,11 @@ export class DockerServerManager {
     } catch {
       // not found
     }
+
+    const modBinds = await this.modules.globalBindsFor(
+      payload.serverId,
+      payload.installationPath,
+    );
 
     const container = await this.docker.createContainer({
       name,
@@ -159,9 +202,8 @@ export class DockerServerManager {
         // Coop AutoSync writes AssemblyInfo.cs under
         // engine/Modules/Coop/.../AutoSyncExport — install cannot be :ro.
         Binds: [
-          `${payload.installationPath}:/opt/bannerlord`,
-          `${root}:/srv/instance`,
-          `${wineDir}:/wineprefix`,
+          ...coreBinds(payload.installationPath, root, wineDir),
+          ...modBinds,
         ],
         PortBindings: coopPortBindings(payload.gamePort, payload.enginePort),
         RestartPolicy: { Name: 'unless-stopped' },
@@ -198,7 +240,7 @@ export class DockerServerManager {
     const container = await this.getByServerId(serverId);
     const info = await container.inspect();
     const resolved = ports ?? portsFromContainer(info);
-    if (this.needsRecreate(info, resolved)) {
+    if (await this.needsRecreate(info, resolved, serverId)) {
       if (!resolved) {
         throw new Error(
           'Cannot heal container publish mappings: missing game/engine ports',
@@ -227,7 +269,7 @@ export class DockerServerManager {
     const container = await this.getByServerId(serverId);
     const info = await container.inspect();
     const resolved = ports ?? portsFromContainer(info);
-    if (this.needsRecreate(info, resolved)) {
+    if (await this.needsRecreate(info, resolved, serverId)) {
       if (!resolved) {
         throw new Error(
           'Cannot heal container publish mappings: missing game/engine ports',
@@ -239,30 +281,77 @@ export class DockerServerManager {
     await container.restart({ t: 30 });
   }
 
-  private needsRecreate(
+  /**
+   * Recreate container binds after modules.json changes (keeps running state).
+   */
+  async recreateForModules(serverId: string): Promise<void> {
+    try {
+      const container = await this.getByServerId(serverId);
+      const info = await container.inspect();
+      const ports = portsFromContainer(info);
+      if (!ports) {
+        // Container exists but ports unknown — skip until next start/restart.
+        return;
+      }
+      const wasRunning = Boolean(info.State.Running);
+      await this.recreateHealthy(serverId, info, ports, wasRunning);
+    } catch {
+      // No container yet — binds will apply on create/start.
+    }
+  }
+
+  private async needsRecreate(
     info: Dockerode.ContainerInspectInfo,
     ports?: { gamePort: number; enginePort: number },
-  ): boolean {
+    serverId?: string,
+  ): Promise<boolean> {
     if (installationBindIsReadOnly(info)) return true;
-    if (!ports) return false;
-    return portPublishNeedsHeal(info, ports.gamePort, ports.enginePort);
+    if (ports && portPublishNeedsHeal(info, ports.gamePort, ports.enginePort)) {
+      return true;
+    }
+    if (serverId) {
+      const binds = info.HostConfig.Binds ?? [];
+      const installationPath = installationPathFromBinds(binds);
+      const desired = await this.modules.globalBindsFor(
+        serverId,
+        installationPath,
+      );
+      if (!modBindsEqual(binds, desired)) return true;
+    }
+    return false;
   }
 
   /**
-   * Heal RO install mounts and/or wrong port publish (pre-NAT containers that
-   * mapped hostPort→hostPort while Coop still listens on 4200/7210).
+   * Heal RO install mounts, wrong port publish, and/or module bind drift.
    */
   private async recreateHealthy(
     serverId: string,
     info: Dockerode.ContainerInspectInfo,
     ports: { gamePort: number; enginePort: number },
+    startAfter = true,
   ): Promise<void> {
     const name = containerNameFor(serverId);
-    const binds = (info.HostConfig.Binds ?? []).map((bind) =>
+    const root = serverRoot(this.config, serverId);
+    const wineDir = `${root}/wineprefix`;
+    const existingBinds = (info.HostConfig.Binds ?? []).map((bind) =>
       bind.includes(':/opt/bannerlord:ro')
         ? bind.replace(':/opt/bannerlord:ro', ':/opt/bannerlord')
         : bind,
     );
+    const installationPath =
+      installationPathFromBinds(existingBinds) ??
+      existingBinds
+        .find((b) => b.includes(':/opt/bannerlord'))
+        ?.split(':/opt/bannerlord')[0];
+    if (!installationPath) {
+      throw new Error('Cannot recreate container: missing installation bind');
+    }
+
+    const modBinds = await this.modules.globalBindsFor(
+      serverId,
+      installationPath,
+    );
+    const binds = [...coreBinds(installationPath, root, wineDir), ...modBinds];
 
     const labels = {
       ...(info.Config.Labels ?? {}),
@@ -295,7 +384,9 @@ export class DockerServerManager {
       },
       ExposedPorts: coopExposedPorts(),
     });
-    await container.start();
+    if (startAfter) {
+      await container.start();
+    }
   }
 
   async kill(serverId: string): Promise<void> {

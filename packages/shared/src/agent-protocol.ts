@@ -1,5 +1,7 @@
 /** Agent ↔ API command protocol (Socket.IO acks). */
 
+import type { ModpackPreset, ScannedModule, ServerModulesConfig } from './modules.js';
+
 export type AgentCommandAction =
   | 'server.create'
   | 'server.start'
@@ -15,6 +17,12 @@ export type AgentCommandAction =
   | 'server.deleteBackup'
   | 'server.readBackup'
   | 'server.readSavePlayers'
+  | 'modules.scan'
+  | 'modules.getConfig'
+  | 'modules.putConfig'
+  | 'modpacks.list'
+  | 'modpacks.put'
+  | 'modpacks.delete'
   | 'installation.ensureDirs'
   | 'installation.inspect'
   | 'installation.import'
@@ -165,3 +173,39 @@ export interface InstallationImportResult {
   layout: string;
   copied: boolean;
 }
+
+export interface ModulesScanPayload {
+  /** When set, also resolve required defaults from this installation path. */
+  installationPath?: string;
+  serverId?: string;
+}
+
+export interface ModulesScanResult {
+  modules: ScannedModule[];
+}
+
+export interface ModulesConfigPayload {
+  serverId: string;
+}
+
+export interface ModulesPutConfigPayload {
+  serverId: string;
+  config: ServerModulesConfig;
+}
+
+export interface ModpacksListPayload {
+  /** Unused; host is implied by the agent. */
+  _?: never;
+}
+
+export interface ModpacksPutPayload {
+  id?: string;
+  name: string;
+  enabledOrderedIds: string[];
+}
+
+export interface ModpacksDeletePayload {
+  id: string;
+}
+
+export type { ModpackPreset };

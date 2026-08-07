@@ -19,10 +19,13 @@ import type {
   FsWritePayload,
 } from '@bannerlord-panel/shared';
 import type { AgentConfig } from '../config.js';
-import { serverRoot } from '../docker/filesystem.js';
+import { serverDataDir } from '../docker/filesystem.js';
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_BINARY_BYTES = 40 * 1024 * 1024;
+
+/** Rel paths under data/ hidden from Files UI (edit via Settings instead). */
+const HIDDEN_REL_PATHS = new Set(['server-config.json']);
 
 const TEXT_EXT = new Set([
   '.txt',
@@ -52,14 +55,20 @@ function isTextPath(relPath: string): boolean {
   return TEXT_EXT.has(lower.slice(dot));
 }
 
+function isHiddenRel(rel: string): boolean {
+  const normalized = rel.replace(/\\/g, '/').replace(/^\.\//, '');
+  return HIDDEN_REL_PATHS.has(normalized);
+}
+
 /**
- * Safe path resolution under a server's data root.
+ * Safe path resolution under servers/<id>/data (Game Saves + logs).
+ * wineprefix and mod-config.json stay outside this jail.
  */
 export class ServerFileManager {
   constructor(private readonly config: AgentConfig) {}
 
   private root(serverId: string): string {
-    return resolve(serverRoot(this.config, serverId));
+    return resolve(serverDataDir(this.config, serverId));
   }
 
   private resolveSafe(serverId: string, relPath: string): string {
@@ -72,6 +81,10 @@ export class ServerFileManager {
     const rel = relative(root, absolute);
     if (rel.startsWith('..') || rel === '..') {
       throw new Error('Path escapes server root');
+    }
+    const relPosix = rel.split(sep).join('/') || '.';
+    if (isHiddenRel(relPosix)) {
+      throw new Error('Path is not available in the file manager');
     }
     return absolute;
   }
@@ -91,11 +104,13 @@ export class ServerFileManager {
     const entries: FileEntry[] = [];
     for (const name of names) {
       const full = join(dir, name);
+      const entryRel = this.toRel(serverId, full);
+      if (isHiddenRel(entryRel)) continue;
       try {
         const info = await stat(full);
         entries.push({
           name,
-          path: this.toRel(serverId, full),
+          path: entryRel,
           type: info.isDirectory() ? 'dir' : 'file',
           size: info.isDirectory() ? 0 : info.size,
           modifiedAt: info.mtime.toISOString(),
@@ -198,6 +213,8 @@ export class ServerFileManager {
       const names = await readdir(dir);
       for (const name of names) {
         const full = join(dir, name);
+        const entryRel = this.toRel(payload.serverId, full);
+        if (isHiddenRel(entryRel)) continue;
         let info;
         try {
           info = await stat(full);
@@ -207,7 +224,7 @@ export class ServerFileManager {
         if (name.toLowerCase().includes(query)) {
           results.push({
             name,
-            path: this.toRel(payload.serverId, full),
+            path: entryRel,
             type: info.isDirectory() ? 'dir' : 'file',
             size: info.isDirectory() ? 0 : info.size,
             modifiedAt: info.mtime.toISOString(),

@@ -6,13 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { ServerSettingsPanel } from './server/ServerSettingsPanel';
+import { ServerModulesPanel } from './server/ServerModulesPanel';
 import { ServerConsole } from './server/ServerConsole';
 import { ServerFileManager } from './server/ServerFileManager';
 import { ServerSchedules } from './server/ServerSchedules';
 import { ServerBackups } from './server/ServerBackups';
 import { ServerAnalyticsPanel } from './server/ServerAnalytics';
 
-type Tab = 'console' | 'analytics' | 'files' | 'schedules' | 'backups' | 'settings';
+type Tab =
+  | 'console'
+  | 'analytics'
+  | 'files'
+  | 'schedules'
+  | 'backups'
+  | 'modules'
+  | 'settings';
 
 export function ServerPage() {
   const { id = '' } = useParams();
@@ -214,6 +222,13 @@ export function ServerPage() {
         </Button>
         <Button
           size="sm"
+          variant={tab === 'modules' ? 'primary' : 'ghost'}
+          onClick={() => setTab('modules')}
+        >
+          Modules
+        </Button>
+        <Button
+          size="sm"
           variant={tab === 'settings' ? 'primary' : 'ghost'}
           onClick={() => setTab('settings')}
         >
@@ -231,6 +246,12 @@ export function ServerPage() {
         <ServerSchedules serverId={server.id} />
       ) : tab === 'backups' ? (
         <ServerBackups serverId={server.id} />
+      ) : tab === 'modules' ? (
+        <ServerModulesPanel
+          serverId={server.id}
+          hostId={server.hostId}
+          serverRunning={server.status === 'running'}
+        />
       ) : (
         <ServerSettingsPanel serverId={server.id} />
       )}

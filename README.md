@@ -84,7 +84,7 @@ Lifecycle: `POST /api/servers/:id/start|stop|restart|kill`, `DELETE /api/servers
 
 ### Console
 
-Open a server → **Console** tab. Output streams live over Socket.IO (`Wine/Docker → agent → API → browser`). Commands require `console:write` (admin/moderator).
+Open a server → **Console** tab. Output streams live over Socket.IO (`Wine/Docker → agent → API → browser`). Commands require `console:write` (any role with access to that server).
 
 ### Files
 
@@ -96,7 +96,11 @@ Open a server → **Schedules** tab. Create cron (UTC), interval, or one-shot ta
 
 ### Backups
 
-Open a server → **Backups** tab. Creates zip archives of `Game Saves`, `server-config.json`, `mod-config.json`, and optional `server-mods` under `{dataRoot}/backups/<serverId>/`. Restore stops the container if needed, replaces those paths, then restarts if it was running. Retention keeps the last N backups (default 10).
+Open a server → **Backups** tab. Creates zip archives of `Game Saves`, `server-config.json`, `mod-config.json`, `modules.json` / `modules.arg`, and optional `server-mods` under `{dataRoot}/backups/<serverId>/`. Restore stops the container if needed, replaces those paths, then restarts if it was running. Retention keeps the last N backups (default 10).
+
+### Modules
+
+Open a server → **Modules** tab. Scans the shared installation’s `engine/Modules` plus `{dataRoot}/mods/` (one install of each third-party module for all servers). Enable/reorder modules, save per-instance load order, or apply named modpack presets. Selected global mods are RO-mounted into the container; the runtime passes Bannerlord’s `_MODULES_*…*_MODULES_` argument.
 
 ## License / game files
 
