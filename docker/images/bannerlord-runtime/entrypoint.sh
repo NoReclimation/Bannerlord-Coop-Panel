@@ -34,9 +34,15 @@ if [[ ! -f "${INSTANCE_ROOT}/mod-config.json" ]]; then
   echo '{"difficulty":{},"modOptions":{}}' > "${INSTANCE_ROOT}/mod-config.json"
 fi
 
-MODULES_ARG=""
+# BannerlordCoopServer.exe has its own CLI (--data-dir, --port, …) and rejects
+# TaleWorlds' classic `_MODULES_*…*_MODULES_` token as an unknown option.
+# modules.arg is still written by the agent for inventory/backups; enabled
+# global mods are RO-bound into engine/Modules/ — do not pass that argv here.
 if [[ -f "${MODULES_ARG_FILE}" ]]; then
-  MODULES_ARG="$(tr -d '\r\n' < "${MODULES_ARG_FILE}" || true)"
+  ignored="$(tr -d '\r\n' < "${MODULES_ARG_FILE}" || true)"
+  if [[ -n "${ignored}" ]]; then
+    echo "[entrypoint] noting modules.arg (not passed to BannerlordCoopServer.exe): ${ignored}"
+  fi
 fi
 
 # Headless Wine: Xvfb keeps some Win32 paths happy without a real display.
@@ -44,10 +50,5 @@ Xvfb :99 -screen 0 1024x768x16 >/tmp/xvfb.log 2>&1 &
 export DISPLAY=:99
 
 cd "${INSTALL_ROOT}"
-if [[ -n "${MODULES_ARG}" ]]; then
-  echo "[entrypoint] starting BannerlordCoopServer.exe --data-dir ${DATA_DIR} ${MODULES_ARG}"
-  exec wine "${EXE}" --data-dir "${DATA_DIR}" "${MODULES_ARG}"
-else
-  echo "[entrypoint] starting BannerlordCoopServer.exe --data-dir ${DATA_DIR} (no modules.arg load order)"
-  exec wine "${EXE}" --data-dir "${DATA_DIR}"
-fi
+echo "[entrypoint] starting BannerlordCoopServer.exe --data-dir ${DATA_DIR}"
+exec wine "${EXE}" --data-dir "${DATA_DIR}"

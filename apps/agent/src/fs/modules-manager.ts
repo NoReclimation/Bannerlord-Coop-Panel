@@ -248,7 +248,8 @@ export class ModulesManager {
       `${JSON.stringify(config, null, 2)}\n`,
       'utf8',
     );
-    // Flat argv token for the runtime entrypoint (no JSON parser in the image).
+    // Flat inventory token (TaleWorlds-style). BannerlordCoopServer.exe does
+    // not accept this as CLI argv — entrypoint ignores it; binds still apply.
     const modulesArg =
       config.enabledOrderedIds.length > 0
         ? `_MODULES_*${config.enabledOrderedIds.join('*')}*_MODULES_`
