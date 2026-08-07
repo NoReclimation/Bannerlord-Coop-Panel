@@ -75,8 +75,10 @@ function levelLabel(value: unknown): string {
 }
 
 export function ServerSettingsPanel({ serverId }: { serverId: string }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canWrite = can('servers:write');
+  const showConfigPaths =
+    user?.role === 'admin' || user?.role === 'moderator';
   const [config, setConfig] = useState<ServerConfigBundle | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -504,10 +506,22 @@ export function ServerSettingsPanel({ serverId }: { serverId: string }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
           <div className="text-xs text-muted">
-            <p>{paths.process}</p>
-            <p>{paths.mod}</p>
-            {status ? <p className="mt-1 text-success">{status}</p> : null}
-            {error ? <p className="mt-1 text-danger">{error}</p> : null}
+            {showConfigPaths ? (
+              <>
+                <p>{paths.process}</p>
+                <p>{paths.mod}</p>
+              </>
+            ) : null}
+            {status ? (
+              <p className={showConfigPaths ? 'mt-1 text-success' : 'text-success'}>
+                {status}
+              </p>
+            ) : null}
+            {error ? (
+              <p className={showConfigPaths ? 'mt-1 text-danger' : 'text-danger'}>
+                {error}
+              </p>
+            ) : null}
           </div>
           {canWrite ? (
             <Button disabled={busy} onClick={() => void save()}>
