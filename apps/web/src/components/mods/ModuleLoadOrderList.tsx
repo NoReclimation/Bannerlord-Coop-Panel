@@ -41,6 +41,7 @@ export function ModuleLoadOrderList({
       {rows.map((row, index) => {
         const mod = row.module;
         const required = Boolean(mod?.required || isRequiredModuleId(row.id));
+        const canToggle = Boolean(onToggle) && editable && !required;
         const loadIndex = row.enabled
           ? rows.filter((r) => r.enabled).findIndex((r) => r.id === row.id) + 1
           : null;
@@ -56,7 +57,11 @@ export function ModuleLoadOrderList({
               setDragIndex(null);
             }}
             onDragEnd={() => setDragIndex(null)}
-            className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-3"
+            className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-3 ${
+              row.enabled
+                ? 'border-border bg-surface'
+                : 'border-border/70 bg-surface/60 opacity-90'
+            }`}
           >
             <span
               className={`select-none text-muted ${editable && onReorder ? 'cursor-grab' : ''}`}
@@ -65,7 +70,7 @@ export function ModuleLoadOrderList({
             >
               ⋮⋮
             </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded border border-border text-sm text-muted">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border text-sm text-muted">
               {loadIndex ?? '—'}
             </span>
             <div className="min-w-0 flex-1">
@@ -79,29 +84,34 @@ export function ModuleLoadOrderList({
                   <Badge tone="accent">GLOBAL</Badge>
                 ) : null}
                 {required ? <Badge tone="danger">REQUIRED</Badge> : null}
-                {row.enabled ? <Badge tone="success">ON</Badge> : null}
+                {row.enabled ? (
+                  <Badge tone="success">ON</Badge>
+                ) : (
+                  <Badge tone="muted">OFF</Badge>
+                )}
               </div>
               <p className="truncate text-xs text-muted">{row.id}</p>
             </div>
             {onToggle ? (
-              <button
+              <Button
                 type="button"
-                role="switch"
-                aria-checked={row.enabled}
-                disabled={!editable || required}
-                onClick={() => onToggle(row.id)}
-                className={`relative h-7 w-12 rounded-full transition ${
-                  row.enabled
-                    ? 'bg-accent'
-                    : 'border border-border bg-surface-2'
-                } disabled:opacity-60`}
+                size="sm"
+                variant={row.enabled ? 'secondary' : 'primary'}
+                disabled={!canToggle}
+                title={
+                  required
+                    ? 'Required Coop modules stay enabled'
+                    : row.enabled
+                      ? 'Disable this module in the preset'
+                      : 'Enable this module in the preset'
+                }
+                onClick={() => {
+                  if (canToggle) onToggle(row.id);
+                }}
+                aria-pressed={row.enabled}
               >
-                <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-text transition ${
-                    row.enabled ? 'left-5' : 'left-0.5'
-                  }`}
-                />
-              </button>
+                {required ? 'Required' : row.enabled ? 'Disable' : 'Enable'}
+              </Button>
             ) : null}
             {onReorder ? (
               <div className="flex gap-1">
