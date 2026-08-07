@@ -4,36 +4,68 @@ import {
   Server,
   Network,
   Package,
+  Puzzle,
   LogOut,
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import type { Permission } from '@bannerlord-panel/shared';
 
-const links = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** null = always visible when signed in */
+  permission: Permission | null;
+  /** Extra gate (OR). If set, at least one must pass in addition to permission. */
+  anyOf?: Permission[];
+};
+
+const links: NavItem[] = [
   {
     to: '/',
     label: 'Dashboard',
     icon: LayoutDashboard,
-    permission: null as null | 'installations:read' | 'hosts:read',
+    permission: null,
+  },
+  {
+    to: '/mods',
+    label: 'Mods',
+    icon: Puzzle,
+    permission: 'installations:read',
+  },
+  {
+    to: '/users',
+    label: 'Users',
+    icon: Users,
+    permission: null,
+    anyOf: ['users:manage', 'servers:assign'],
   },
   {
     to: '/installations',
     label: 'Installations',
     icon: Package,
-    permission: 'installations:read' as const,
+    permission: 'installations:read',
   },
   {
     to: '/hosts',
     label: 'Hosts',
     icon: Network,
-    permission: 'hosts:read' as const,
+    permission: 'hosts:read',
   },
 ];
 
 export function AppShell() {
   const { user, logout, can } = useAuth();
+
+  const visible = links.filter((item) => {
+    if (item.anyOf) {
+      return item.anyOf.some((p) => can(p));
+    }
+    return item.permission === null || can(item.permission);
+  });
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1400px]">
@@ -47,29 +79,11 @@ export function AppShell() {
           </h1>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {links
-            .filter(
-              ({ permission }) => permission === null || can(permission),
-            )
-            .map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text',
-                    isActive && 'bg-surface-2 text-text',
-                  )
-                }
-              >
-                <Icon className="size-4" />
-                {label}
-              </NavLink>
-            ))}
-          {can('users:manage') || can('servers:assign') ? (
+          {visible.map(({ to, label, icon: Icon }) => (
             <NavLink
-              to="/users"
+              key={to}
+              to={to}
+              end={to === '/'}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text',
@@ -77,10 +91,10 @@ export function AppShell() {
                 )
               }
             >
-              <Users className="size-4" />
-              Users
+              <Icon className="size-4" />
+              {label}
             </NavLink>
-          ) : null}
+          ))}
         </nav>
         <div className="mt-auto border-t border-border px-2 pt-4">
           <p className="truncate text-sm text-text">

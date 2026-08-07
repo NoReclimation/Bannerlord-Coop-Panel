@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ModpackPreset } from '@bannerlord-panel/shared';
+import type { ModpackPreset, ScannedModule } from '@bannerlord-panel/shared';
 import type { ApiConfig } from '../config.js';
 import type { AgentGateway } from '../agent/gateway.js';
 import type { HostRegistry } from '../services/host-registry.js';
+import type { InstallationRegistry } from '../services/installation-registry.js';
 import type { UserRegistry } from '../services/user-registry.js';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
 
@@ -16,13 +17,66 @@ const putSchema = z.object({
 export function createModpacksRouter(deps: {
   config: ApiConfig;
   hosts: HostRegistry;
+  installations: InstallationRegistry;
   users: UserRegistry;
   gateway: AgentGateway;
 }): Router {
   const router = Router();
   const auth = requireAuth(deps.config, deps.users);
   const canRead = requirePermission('servers:read');
-  const canWrite = requirePermission('servers:write');
+  const canWritePacks = requirePermission('installations:write');
+
+  router.get(
+    '/hosts/:hostId/modules',
+    auth,
+    canRead,
+    async (req, res, next) => {
+      try {
+        const host = await deps.hosts.getHost(req.params.hostId);
+        if (!host) {
+          res.status(404).json({ error: 'Host not found' });
+          return;
+        }
+        if (!deps.gateway.isHostConnected(host.id)) {
+          res.status(503).json({ error: 'Host agent is offline' });
+          return;
+        }
+
+        let installationPath: string | undefined;
+        const installationId =
+          typeof req.query.installationId === 'string'
+            ? req.query.installationId
+            : undefined;
+        if (installationId) {
+          const installation = await deps.installations.get(installationId);
+          if (!installation || installation.hostId !== host.id) {
+            res.status(404).json({ error: 'Installation not found on host' });
+            return;
+          }
+          installationPath = installation.path;
+        } else {
+          const list = await deps.installations.list(host.id);
+          installationPath = list[0]?.path;
+        }
+
+        const response = await deps.gateway.request(host.id, 'modules.scan', {
+          installationPath,
+        });
+        if (!response.ok) {
+          res
+            .status(502)
+            .json({ error: response.error ?? 'Failed to scan modules' });
+          return;
+        }
+        res.json({
+          modules: (response.result as { modules: ScannedModule[] }).modules,
+          installationPath: installationPath ?? null,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   router.get(
     '/hosts/:hostId/modpacks',
@@ -60,7 +114,7 @@ export function createModpacksRouter(deps: {
   router.put(
     '/hosts/:hostId/modpacks',
     auth,
-    canWrite,
+    canWritePacks,
     async (req, res, next) => {
       try {
         const body = putSchema.parse(req.body);
@@ -98,7 +152,7 @@ export function createModpacksRouter(deps: {
   router.delete(
     '/hosts/:hostId/modpacks/:id',
     auth,
-    canWrite,
+    canWritePacks,
     async (req, res, next) => {
       try {
         const host = await deps.hosts.getHost(req.params.hostId);

@@ -201,6 +201,15 @@ export const api = {
       `/api/hosts/${hostId}/modpacks`,
     );
   },
+  scanHostModules(hostId: string, installationId?: string) {
+    const q = installationId
+      ? `?installationId=${encodeURIComponent(installationId)}`
+      : '';
+    return request<{
+      modules: ScannedModule[];
+      installationPath: string | null;
+    }>(`/api/hosts/${hostId}/modules${q}`);
+  },
   putModpack(
     hostId: string,
     pack: { id?: string; name: string; enabledOrderedIds: string[] },

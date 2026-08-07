@@ -8,6 +8,7 @@ import { HostsPage } from '@/pages/HostsPage';
 import { InstallationsPage } from '@/pages/InstallationsPage';
 import { ServerPage } from '@/pages/ServerPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { ModsPage } from '@/pages/ModsPage';
 
 function Protected() {
   const { user, loading } = useAuth();
@@ -52,6 +53,7 @@ export function App() {
                 <RequirePermission permission="installations:read" />
               }
             >
+              <Route path="mods" element={<ModsPage />} />
               <Route path="installations" element={<InstallationsPage />} />
             </Route>
             <Route element={<RequirePermission permission="hosts:read" />}>

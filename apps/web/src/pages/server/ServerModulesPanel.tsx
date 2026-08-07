@@ -1,29 +1,37 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  isRequiredModuleId,
-  type ModpackPreset,
-  type ScannedModule,
-} from '@bannerlord-panel/shared';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { ModpackPreset, ScannedModule } from '@bannerlord-panel/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  ModuleLoadOrderList,
+  type ModuleRow,
+} from '@/components/mods/ModuleLoadOrderList';
 
-type Row = {
-  id: string;
-  enabled: boolean;
-  module?: ScannedModule;
-};
+type SubTab = 'modpacks' | 'load-order';
 
-function moveItem<T>(list: T[], from: number, to: number): T[] {
-  if (to < 0 || to >= list.length || from === to) return list;
-  const next = [...list];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item!);
-  return next;
+function buildRows(
+  scanned: ScannedModule[],
+  enabledOrderedIds: string[],
+): ModuleRow[] {
+  const enabledSet = new Set(enabledOrderedIds);
+  const ordered: ModuleRow[] = [];
+  for (const id of enabledOrderedIds) {
+    ordered.push({
+      id,
+      enabled: true,
+      module: scanned.find((m) => m.id === id),
+    });
+  }
+  for (const m of scanned) {
+    if (!enabledSet.has(m.id)) {
+      ordered.push({ id: m.id, enabled: false, module: m });
+    }
+  }
+  return ordered;
 }
 
 export function ServerModulesPanel({
@@ -37,41 +45,17 @@ export function ServerModulesPanel({
 }) {
   const { can } = useAuth();
   const canWrite = can('servers:write');
+  const canManagePacks = can('installations:write');
 
+  const [subTab, setSubTab] = useState<SubTab>('modpacks');
   const [modules, setModules] = useState<ScannedModule[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<ModuleRow[]>([]);
   const [modpacks, setModpacks] = useState<ModpackPreset[]>([]);
   const [selectedPack, setSelectedPack] = useState('');
-  const [packName, setPackName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-
-  const byId = useMemo(() => {
-    const map = new Map<string, ScannedModule>();
-    for (const m of modules) map.set(m.id, m);
-    return map;
-  }, [modules]);
-
-  const buildRows = useCallback(
-    (scanned: ScannedModule[], enabledOrderedIds: string[]) => {
-      const enabledSet = new Set(enabledOrderedIds);
-      const ordered: Row[] = [];
-      for (const id of enabledOrderedIds) {
-        ordered.push({ id, enabled: true, module: scanned.find((m) => m.id === id) });
-      }
-      for (const m of scanned) {
-        if (!enabledSet.has(m.id)) {
-          ordered.push({ id: m.id, enabled: false, module: m });
-        }
-      }
-      return ordered;
-    },
-    [],
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,19 +63,22 @@ export function ServerModulesPanel({
     try {
       const [modulesRes, packsRes] = await Promise.all([
         api.getServerModules(serverId),
-        api.listModpacks(hostId).catch(() => ({ modpacks: [] as ModpackPreset[] })),
+        api
+          .listModpacks(hostId)
+          .catch(() => ({ modpacks: [] as ModpackPreset[] })),
       ]);
       setModules(modulesRes.modules);
-      setRows(buildRows(modulesRes.modules, modulesRes.config.enabledOrderedIds));
+      setRows(
+        buildRows(modulesRes.modules, modulesRes.config.enabledOrderedIds),
+      );
       setModpacks(packsRes.modpacks);
-      setDirty(false);
       setInfo(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load modules');
     } finally {
       setLoading(false);
     }
-  }, [serverId, hostId, buildRows]);
+  }, [serverId, hostId]);
 
   useEffect(() => {
     void load();
@@ -100,46 +87,26 @@ export function ServerModulesPanel({
   const installedCount = modules.length;
   const activeCount = rows.filter((r) => r.enabled).length;
 
-  function toggle(id: string) {
-    if (!canWrite) return;
-    const mod = byId.get(id);
-    if (mod?.required || isRequiredModuleId(id)) return;
-    setRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)),
-    );
-    setDirty(true);
-    setInfo(null);
-  }
-
-  function reorder(from: number, to: number) {
-    if (!canWrite) return;
-    setRows((prev) => moveItem(prev, from, to));
-    setDirty(true);
-    setInfo(null);
-  }
-
-  function enabledOrderedIds(): string[] {
-    return rows.filter((r) => r.enabled).map((r) => r.id);
-  }
-
-  async function save() {
-    if (!canWrite) return;
+  async function applySelectedPack() {
+    if (!canWrite || !selectedPack) return;
+    const pack = modpacks.find((p) => p.id === selectedPack);
+    if (!pack) return;
     setSaving(true);
     setError(null);
     setInfo(null);
     try {
       const result = await api.putServerModules(serverId, {
-        enabledOrderedIds: enabledOrderedIds(),
+        enabledOrderedIds: pack.enabledOrderedIds,
       });
-      setDirty(false);
+      setRows(buildRows(modules, pack.enabledOrderedIds));
       setInfo(
         result.restartRequired || serverRunning
-          ? 'Saved. Module mounts and load order were applied (container recreated if it was running).'
-          : 'Saved.',
+          ? `Applied “${pack.name}”. Container was recreated if it was running.`
+          : `Applied “${pack.name}”.`,
       );
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save modules');
+      setError(err instanceof Error ? err.message : 'Failed to apply modpack');
     } finally {
       setSaving(false);
     }
@@ -152,64 +119,14 @@ export function ServerModulesPanel({
       setModules(result.modules);
       setRows((prev) => {
         const enabled = prev.filter((r) => r.enabled).map((r) => r.id);
-        // Keep current enabled order; drop missing; append new disabled.
-        const kept = enabled.filter((id) => result.modules.some((m) => m.id === id));
-        return buildRows(result.modules, kept.length ? kept : enabledOrderedIds());
+        const kept = enabled.filter((id) =>
+          result.modules.some((m) => m.id === id),
+        );
+        return buildRows(result.modules, kept.length ? kept : enabled);
       });
       setInfo(`Rescanned — ${result.modules.length} modules found.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rescan failed');
-    }
-  }
-
-  function applyPack(packId: string) {
-    setSelectedPack(packId);
-    const pack = modpacks.find((p) => p.id === packId);
-    if (!pack) return;
-    setRows(buildRows(modules, pack.enabledOrderedIds));
-    setDirty(true);
-    setInfo(`Applied modpack “${pack.name}”. Save to persist.`);
-  }
-
-  async function saveAsPack() {
-    if (!canWrite) return;
-    const name = packName.trim();
-    if (!name) {
-      setError('Enter a modpack name');
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      const { modpack } = await api.putModpack(hostId, {
-        name,
-        enabledOrderedIds: enabledOrderedIds(),
-      });
-      setModpacks((prev) =>
-        [...prev.filter((p) => p.id !== modpack.id), modpack].sort((a, b) =>
-          a.name.localeCompare(b.name),
-        ),
-      );
-      setSelectedPack(modpack.id);
-      setPackName('');
-      setInfo(`Modpack “${modpack.name}” saved.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save modpack');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deletePack() {
-    if (!canWrite || !selectedPack) return;
-    if (!window.confirm('Delete this modpack preset?')) return;
-    try {
-      await api.deleteModpack(hostId, selectedPack);
-      setModpacks((prev) => prev.filter((p) => p.id !== selectedPack));
-      setSelectedPack('');
-      setInfo('Modpack deleted.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete modpack');
     }
   }
 
@@ -223,8 +140,8 @@ export function ServerModulesPanel({
         <div>
           <h3 className="text-xl font-semibold text-text">Modules</h3>
           <p className="mt-1 text-sm text-muted">
-            Enable installed modules and arrange their load order. Third-party
-            mods live once under the host{' '}
+            Choose an admin-defined modpack, or review this server’s active load
+            order. Third-party mods live once under the host{' '}
             <code className="text-accent">mods/</code> folder.
           </p>
         </div>
@@ -235,166 +152,127 @@ export function ServerModulesPanel({
           <Button size="sm" variant="secondary" onClick={() => void rescan()}>
             Rescan
           </Button>
-          {canWrite ? (
-            <Button size="sm" disabled={saving || !dirty} onClick={() => void save()}>
-              {saving ? 'Saving…' : 'Save'}
-            </Button>
-          ) : null}
         </div>
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {info ? <p className="text-sm text-accent">{info}</p> : null}
 
-      <Card>
-        <CardHeader
-          title="Modpacks"
-          description="Named presets of enabled modules + load order for this host."
-        />
-        <div className="flex flex-wrap items-end gap-3 px-4 py-3">
-          <div className="min-w-[12rem] flex-1 space-y-1">
-            <Label htmlFor="modpack-select">Apply modpack</Label>
-            <select
-              id="modpack-select"
-              className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-              value={selectedPack}
-              onChange={(e) => applyPack(e.target.value)}
-              disabled={!canWrite}
-            >
-              <option value="">Select…</option>
-              {modpacks.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {canWrite ? (
-            <>
-              <div className="min-w-[10rem] flex-1 space-y-1">
-                <Label htmlFor="modpack-name">Save as modpack</Label>
-                <Input
-                  id="modpack-name"
-                  value={packName}
-                  onChange={(e) => setPackName(e.target.value)}
-                  placeholder="Preset name"
-                />
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={saving}
-                onClick={() => void saveAsPack()}
-              >
-                Save preset
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!selectedPack}
-                onClick={() => void deletePack()}
-              >
-                Delete preset
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </Card>
-
-      <div className="space-y-2">
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted">
-            No modules found. Drop module folders into the host{' '}
-            <code className="text-accent">mods/</code> directory or ensure the
-            installation includes <code className="text-accent">engine/Modules</code>.
-          </p>
-        ) : (
-          rows.map((row, index) => {
-            const mod = row.module ?? byId.get(row.id);
-            const required = Boolean(mod?.required || isRequiredModuleId(row.id));
-            const loadIndex = row.enabled
-              ? rows.filter((r) => r.enabled).findIndex((r) => r.id === row.id) + 1
-              : null;
-
-            return (
-              <div
-                key={row.id}
-                draggable={canWrite}
-                onDragStart={() => setDragIndex(index)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (dragIndex !== null) reorder(dragIndex, index);
-                  setDragIndex(null);
-                }}
-                onDragEnd={() => setDragIndex(null)}
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-3"
-              >
-                <span
-                  className="cursor-grab select-none text-muted"
-                  title="Drag to reorder"
-                  aria-hidden
-                >
-                  ⋮⋮
-                </span>
-                <span className="flex h-8 w-8 items-center justify-center rounded border border-border text-sm text-muted">
-                  {loadIndex ?? '—'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-text">
-                      {mod?.name ?? row.id}
-                    </span>
-                    {mod?.source === 'builtin' ? (
-                      <Badge tone="muted">BUILT-IN</Badge>
-                    ) : (
-                      <Badge tone="accent">GLOBAL</Badge>
-                    )}
-                    {required ? <Badge tone="danger">REQUIRED</Badge> : null}
-                    {row.enabled ? <Badge tone="success">ON</Badge> : null}
-                  </div>
-                  <p className="truncate text-xs text-muted">{row.id}</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={row.enabled}
-                  disabled={!canWrite || required}
-                  onClick={() => toggle(row.id)}
-                  className={`relative h-7 w-12 rounded-full transition ${
-                    row.enabled ? 'bg-accent' : 'bg-surface-2 border border-border'
-                  } disabled:opacity-60`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-text transition ${
-                      row.enabled ? 'left-5' : 'left-0.5'
-                    }`}
-                  />
-                </button>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!canWrite || index === 0}
-                    onClick={() => reorder(index, index - 1)}
-                    aria-label="Move up"
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!canWrite || index === rows.length - 1}
-                    onClick={() => reorder(index, index + 1)}
-                    aria-label="Move down"
-                  >
-                    ↓
-                  </Button>
-                </div>
-              </div>
-            );
-          })
-        )}
+      <div className="flex gap-2 border-b border-border pb-2">
+        <Button
+          size="sm"
+          variant={subTab === 'modpacks' ? 'primary' : 'ghost'}
+          onClick={() => setSubTab('modpacks')}
+        >
+          Modpacks
+        </Button>
+        <Button
+          size="sm"
+          variant={subTab === 'load-order' ? 'primary' : 'ghost'}
+          onClick={() => setSubTab('load-order')}
+        >
+          Load order
+        </Button>
       </div>
+
+      {subTab === 'modpacks' ? (
+        <Card>
+          <CardHeader
+            title="Modpacks"
+            description="Pre-defined load orders built by an admin under Mods."
+            action={
+              canManagePacks ? (
+                <Link
+                  to="/mods"
+                  className="text-sm text-accent hover:underline"
+                >
+                  Manage in Mods →
+                </Link>
+              ) : null
+            }
+          />
+          <div className="flex flex-wrap items-end gap-3 px-4 py-3">
+            <div className="min-w-[14rem] flex-1 space-y-1">
+              <Label htmlFor="server-modpack">Select modpack</Label>
+              <select
+                id="server-modpack"
+                className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                value={selectedPack}
+                onChange={(e) => setSelectedPack(e.target.value)}
+                disabled={!canWrite}
+              >
+                <option value="">Select…</option>
+                {modpacks.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.enabledOrderedIds.length} modules)
+                  </option>
+                ))}
+              </select>
+            </div>
+            {canWrite ? (
+              <Button
+                size="sm"
+                disabled={saving || !selectedPack}
+                onClick={() => void applySelectedPack()}
+              >
+                {saving ? 'Applying…' : 'Apply to server'}
+              </Button>
+            ) : null}
+          </div>
+          {modpacks.length === 0 ? (
+            <p className="px-4 pb-4 text-sm text-muted">
+              No modpacks on this host yet.
+              {canManagePacks ? (
+                <>
+                  {' '}
+                  Create one in{' '}
+                  <Link to="/mods" className="text-accent hover:underline">
+                    Mods
+                  </Link>
+                  .
+                </>
+              ) : (
+                ' Ask an admin to create presets.'
+              )}
+            </p>
+          ) : selectedPack ? (
+            <div className="border-t border-border px-4 py-3">
+              <p className="mb-2 text-xs text-muted">
+                Preview (apply to write this order to the server)
+              </p>
+              <ModuleLoadOrderList
+                rows={buildRows(
+                  modules,
+                  modpacks.find((p) => p.id === selectedPack)
+                    ?.enabledOrderedIds ?? [],
+                ).filter((r) => r.enabled)}
+                editable={false}
+              />
+            </div>
+          ) : null}
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            Current load order for this server. To change it, apply a modpack
+            from the Modpacks tab
+            {canManagePacks ? (
+              <>
+                {' '}
+                or edit presets in{' '}
+                <Link to="/mods" className="text-accent hover:underline">
+                  Mods
+                </Link>
+              </>
+            ) : null}
+            .
+          </p>
+          <ModuleLoadOrderList
+            rows={rows.filter((r) => r.enabled)}
+            editable={false}
+          />
+        </div>
+      )}
     </div>
   );
 }
