@@ -84,9 +84,6 @@ export function ServerModulesPanel({
     void load();
   }, [load]);
 
-  const installedCount = modules.length;
-  const activeCount = rows.filter((r) => r.enabled).length;
-
   async function applySelectedPack() {
     if (!canWrite || !selectedPack) return;
     const pack = modpacks.find((p) => p.id === selectedPack);
@@ -115,7 +112,12 @@ export function ServerModulesPanel({
   async function rescan() {
     setError(null);
     try {
-      const result = await api.rescanServerModules(serverId);
+      const [result, packsRes] = await Promise.all([
+        api.rescanServerModules(serverId),
+        api
+          .listModpacks(hostId)
+          .catch(() => ({ modpacks: [] as ModpackPreset[] })),
+      ]);
       setModules(result.modules);
       setRows((prev) => {
         const enabled = prev.filter((r) => r.enabled).map((r) => r.id);
@@ -124,7 +126,11 @@ export function ServerModulesPanel({
         );
         return buildRows(result.modules, kept.length ? kept : enabled);
       });
-      setInfo(`Rescanned — ${result.modules.length} modules found.`);
+      setModpacks(packsRes.modpacks);
+      const packCount = packsRes.modpacks.length;
+      setInfo(
+        `Rescanned — ${packCount} Modpack${packCount === 1 ? '' : 's'} found.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rescan failed');
     }
@@ -146,7 +152,7 @@ export function ServerModulesPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted">
-            {installedCount} installed · {activeCount} active
+            {modpacks.length} Modpack{modpacks.length === 1 ? '' : 's'}
           </span>
           <Button size="sm" variant="secondary" onClick={() => void rescan()}>
             Rescan

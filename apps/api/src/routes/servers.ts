@@ -22,7 +22,10 @@ import { seesAllServers } from '@bannerlord-panel/shared';
 const createServerSchema = z.object({
   name: z.string().min(1).max(64),
   hostId: z.string().uuid().optional(),
-  installationId: z.string().min(1),
+  /** Optional when the host has a single shared install — API picks the first. */
+  installationId: z.string().min(1).optional(),
+  /** Optional named load-order preset applied before optional start. */
+  modpackId: z.string().min(1).optional(),
   saveName: z.string().min(1).max(128).optional(),
   password: z.string().max(128).optional(),
   autosaveMinutes: z.number().int().min(0).max(1440).optional(),
@@ -205,7 +208,13 @@ export function createServersRouter(deps: {
         return;
       }
 
-      const installation = await deps.installations.get(body.installationId);
+      let installation = body.installationId
+        ? await deps.installations.get(body.installationId)
+        : null;
+      if (!installation) {
+        const installs = await deps.installations.list(hostId);
+        installation = installs[0] ?? null;
+      }
       if (!installation || installation.hostId !== hostId) {
         res.status(400).json({ error: 'Installation not found on host' });
         return;
@@ -261,6 +270,69 @@ export function createServersRouter(deps: {
           containerName: result.containerName,
           errorMessage: null,
         })) ?? server;
+
+      if (body.modpackId) {
+        const packsRes = await deps.gateway.request(hostId, 'modpacks.list', {});
+        if (!packsRes.ok) {
+          await deps.servers.updateStatus(serverId, 'error', {
+            errorMessage: packsRes.error ?? 'Failed to list modpacks',
+          });
+          await deps.gateway.request(hostId, 'server.delete', { serverId }).catch(() => {});
+          await deps.servers.delete(serverId);
+          res
+            .status(502)
+            .json({ error: packsRes.error ?? 'Failed to list modpacks' });
+          return;
+        }
+        const packs = packsRes.result as Array<{
+          id: string;
+          name: string;
+          enabledOrderedIds: string[];
+        }>;
+        const pack = packs.find((p) => p.id === body.modpackId);
+        if (!pack) {
+          await deps.gateway.request(hostId, 'server.delete', { serverId }).catch(() => {});
+          await deps.servers.delete(serverId);
+          res.status(400).json({ error: 'Modpack not found on host' });
+          return;
+        }
+        const modulesRes = await deps.gateway.request(
+          hostId,
+          'modules.putConfig',
+          {
+            serverId,
+            installationPath: installation.path,
+            config: { enabledOrderedIds: pack.enabledOrderedIds },
+          },
+        );
+        if (!modulesRes.ok) {
+          await deps.servers.updateStatus(serverId, 'error', {
+            errorMessage: modulesRes.error ?? 'Failed to apply modpack',
+          });
+          await deps.gateway.request(hostId, 'server.delete', { serverId }).catch(() => {});
+          await deps.servers.delete(serverId);
+          res
+            .status(502)
+            .json({ error: modulesRes.error ?? 'Failed to apply modpack' });
+          return;
+        }
+        // Container may have been recreated for new mod binds.
+        const statusRes = await deps.gateway.request(hostId, 'server.status', {
+          serverId,
+        });
+        if (statusRes.ok) {
+          const runtime = statusRes.result as {
+            containerId?: string;
+          };
+          if (runtime.containerId) {
+            server =
+              (await deps.servers.updateStatus(serverId, 'stopped', {
+                containerId: runtime.containerId,
+                errorMessage: null,
+              })) ?? server;
+          }
+        }
+      }
 
       if (body.start) {
         await deps.servers.updateStatus(serverId, 'starting');

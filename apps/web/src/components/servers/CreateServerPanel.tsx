@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { GameInstallation } from '@bannerlord-panel/shared';
+import type { GameInstallation, ModpackPreset } from '@bannerlord-panel/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -18,26 +18,47 @@ export function CreateServerPanel({
 }) {
   const navigate = useNavigate();
   const [installations, setInstallations] = useState<GameInstallation[]>([]);
+  const [modpacks, setModpacks] = useState<ModpackPreset[]>([]);
+  const [hostId, setHostId] = useState('');
   const [name, setName] = useState('coop-1');
-  const [installationId, setInstallationId] = useState('');
+  const [modpackId, setModpackId] = useState('');
   const [password, setPassword] = useState('');
   const [saveName, setSaveName] = useState('saveauto1');
   const [startAfter, setStartAfter] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
+      setLoading(true);
       try {
-        const data = await api.listInstallations();
-        setInstallations(data.installations);
-        if (data.installations[0]) {
-          setInstallationId(data.installations[0].id);
+        const [instData, hostsData] = await Promise.all([
+          api.listInstallations(),
+          api.listHosts().catch(() => ({ hosts: [] })),
+        ]);
+        setInstallations(instData.installations);
+
+        const firstInstall = instData.installations[0];
+        const resolvedHostId =
+          firstInstall?.hostId ?? hostsData.hosts[0]?.id ?? '';
+        setHostId(resolvedHostId);
+
+        if (resolvedHostId) {
+          const packsData = await api
+            .listModpacks(resolvedHostId)
+            .catch(() => ({ modpacks: [] as ModpackPreset[] }));
+          setModpacks(packsData.modpacks);
+          if (packsData.modpacks[0]) {
+            setModpackId(packsData.modpacks[0].id);
+          }
         }
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : 'Failed to load installations',
+          err instanceof Error ? err.message : 'Failed to load create form',
         );
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
@@ -47,12 +68,17 @@ export function CreateServerPanel({
     setBusy(true);
     setError(null);
     try {
-      if (!installationId) {
-        throw new Error('Select an installation (import one first)');
+      if (installations.length === 0) {
+        throw new Error('Import an installation first');
+      }
+      if (!modpackId) {
+        throw new Error('Select a modpack');
       }
       const { server } = await api.createServer({
         name: name.trim(),
-        installationId,
+        hostId: hostId || undefined,
+        installationId: installations[0]?.id,
+        modpackId,
         password,
         saveName: saveName.trim() || 'saveauto1',
         start: startAfter,
@@ -65,6 +91,9 @@ export function CreateServerPanel({
       setBusy(false);
     }
   }
+
+  const canSubmit =
+    !busy && !loading && installations.length > 0 && modpacks.length > 0;
 
   return (
     <Card>
@@ -80,13 +109,23 @@ export function CreateServerPanel({
         }
       />
       <form className="space-y-4 p-4" onSubmit={(e) => void handleSubmit(e)}>
-        {installations.length === 0 ? (
+        {installations.length === 0 && !loading ? (
           <p className="text-sm text-muted">
             No installations registered. Go to{' '}
             <Link to="/installations" className="text-accent hover:underline">
               Installations
             </Link>{' '}
             and import a DedicatedServer package first.
+          </p>
+        ) : null}
+
+        {installations.length > 0 && modpacks.length === 0 && !loading ? (
+          <p className="text-sm text-muted">
+            No modpacks on this host yet. Create one under{' '}
+            <Link to="/mods" className="text-accent hover:underline">
+              Mods
+            </Link>{' '}
+            first.
           </p>
         ) : null}
 
@@ -101,19 +140,20 @@ export function CreateServerPanel({
             />
           </div>
           <div>
-            <Label htmlFor="srv-inst">Installation</Label>
+            <Label htmlFor="srv-modpack">Modpack</Label>
             <Select
-              id="srv-inst"
-              value={installationId}
+              id="srv-modpack"
+              value={modpackId}
               required
-              onChange={(e) => setInstallationId(e.target.value)}
+              disabled={loading || modpacks.length === 0}
+              onChange={(e) => setModpackId(e.target.value)}
             >
               <option value="" disabled>
-                Select…
+                {loading ? 'Loading…' : 'Select…'}
               </option>
-              {installations.map((inst) => (
-                <option key={inst.id} value={inst.id}>
-                  {inst.id} ({inst.gameVersion})
+              {modpacks.map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {pack.name} ({pack.enabledOrderedIds.length} modules)
                 </option>
               ))}
             </Select>
@@ -145,7 +185,7 @@ export function CreateServerPanel({
 
         {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-        <Button type="submit" disabled={busy || installations.length === 0}>
+        <Button type="submit" disabled={!canSubmit}>
           {startAfter ? 'Create & start' : 'Create'}
         </Button>
       </form>

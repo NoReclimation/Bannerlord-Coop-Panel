@@ -270,7 +270,8 @@ export const api = {
   },
   createServer(input: {
     name: string;
-    installationId: string;
+    installationId?: string;
+    modpackId?: string;
     hostId?: string;
     saveName?: string;
     password?: string;
